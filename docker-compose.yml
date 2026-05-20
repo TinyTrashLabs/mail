@@ -1,0 +1,58 @@
+services:
+  mail-store-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mail
+      POSTGRES_USER: mail
+      POSTGRES_PASSWORD: ${MAIL_DB_PASSWORD:-changeme}
+    volumes:
+      - mail-store-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mail -d mail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mail-store:
+    build: ./mail-store
+    restart: unless-stopped
+    depends_on:
+      mail-store-db:
+        condition: service_healthy
+    environment:
+      DB_URL: postgres://mail:${MAIL_DB_PASSWORD:-changeme}@mail-store-db:5432/mail
+      INGEST_SECRET: ${INGEST_SECRET}
+      VIEWER_SECRET: ${VIEWER_SECRET}
+      PORT: 3025
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3025/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    # Intentionally no host port mapping — mail-store is reachable only on the
+    # compose network. The viewer talks to it via http://mail-store:3025 and
+    # the CF worker reaches it via the public mail-store fronting (separate setup).
+
+  mail-viewer:
+    build: ./mail-viewer
+    restart: unless-stopped
+    depends_on:
+      mail-store:
+        condition: service_healthy
+    environment:
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      MM_OAUTH_BASE_URL: ${MM_OAUTH_BASE_URL}
+      MM_OAUTH_CLIENT_ID: ${MM_OAUTH_CLIENT_ID}
+      MM_OAUTH_CLIENT_SECRET: ${MM_OAUTH_CLIENT_SECRET}
+      MAIL_STORE_URL: http://mail-store:3025
+      VIEWER_SECRET: ${VIEWER_SECRET}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM_DOMAIN: ${RESEND_FROM_DOMAIN:-tinytrashlabs.com}
+    ports:
+      - "3026:3000"
+
+volumes:
+  mail-store-db-data:
