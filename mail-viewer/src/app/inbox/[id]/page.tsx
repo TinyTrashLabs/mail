@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { fetchMessage, MailStoreError } from '@/lib/mail-store';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import DOMPurify from 'isomorphic-dompurify';
+import sanitizeHtml from 'sanitize-html';
 
 export default async function MessagePage({
   params,
@@ -30,8 +30,38 @@ export default async function MessagePage({
     throw err;
   }
 
-  // Fix: sanitize HTML body to prevent XSS — DOMPurify strips event handlers and script tags
-  const safeHtml = msg.html_body ? DOMPurify.sanitize(msg.html_body) : null;
+  // Sanitize server-side with an allowlist tuned for HTML email.
+  // sanitize-html is pure Node — no jsdom, no ESM conflicts.
+  const safeHtml = msg.html_body
+    ? sanitizeHtml(msg.html_body, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+          'img', 'figure', 'figcaption', 'picture', 'source',
+          'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+          'caption', 'colgroup', 'col',
+          'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          'details', 'summary',
+          'span', 'div', 'section', 'article', 'header', 'footer', 'main',
+          'font', 'center',
+        ]),
+        allowedAttributes: {
+          ...sanitizeHtml.defaults.allowedAttributes,
+          '*': ['style', 'class', 'id', 'align', 'valign', 'bgcolor', 'width', 'height', 'border', 'cellpadding', 'cellspacing'],
+          'a': ['href', 'target', 'rel', 'name'],
+          'img': ['src', 'alt', 'title', 'width', 'height', 'style'],
+          'td': ['colspan', 'rowspan'],
+          'th': ['colspan', 'rowspan', 'scope'],
+          'font': ['color', 'size', 'face'],
+        },
+        allowedSchemes: ['http', 'https', 'mailto', 'cid'],
+        // Force target="_blank" rel on all links to prevent tab hijacking
+        transformTags: {
+          a: (_tagName, attribs) => ({
+            tagName: 'a',
+            attribs: { ...attribs, target: '_blank', rel: 'noopener noreferrer' },
+          }),
+        },
+      })
+    : null;
 
   return (
     <div className="flex h-screen">
@@ -67,7 +97,6 @@ export default async function MessagePage({
               {msg.text_body}
             </pre>
           ) : safeHtml ? (
-            // Fix: dangerouslySetInnerHTML only receives DOMPurify-sanitized HTML
             <div
               className="prose prose-invert max-w-none text-sm"
               dangerouslySetInnerHTML={{ __html: safeHtml }}
