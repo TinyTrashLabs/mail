@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   mail-store-db:
     image: postgres:16-alpine
@@ -27,6 +25,12 @@ services:
       INGEST_SECRET: ${INGEST_SECRET}
       VIEWER_SECRET: ${VIEWER_SECRET}
       PORT: 3025
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3025/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     # Intentionally no host port mapping — mail-store is reachable only on the
     # compose network. The viewer talks to it via http://mail-store:3025 and
     # the CF worker reaches it via the public mail-store fronting (separate setup).
@@ -35,7 +39,8 @@ services:
     build: ./mail-viewer
     restart: unless-stopped
     depends_on:
-      - mail-store
+      mail-store:
+        condition: service_healthy
     environment:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
