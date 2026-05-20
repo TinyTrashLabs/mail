@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   // Instantiate Resend lazily inside the handler so the module can be imported
   // during Next.js build without requiring RESEND_API_KEY at build time.
-  const resend = new Resend(process.env.RESEND_API_KEY);
+  const resend = new Resend(process.env.RESEND_API_KEY!);
 
   const { data, error } = await resend.emails.send({
     from,

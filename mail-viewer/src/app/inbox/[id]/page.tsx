@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { fetchMessage, MailStoreError } from '@/lib/mail-store';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { HtmlBody } from '@/components/HtmlBody';
+import sanitizeHtml from 'sanitize-html';
 
 export default async function MessagePage({
   params,
@@ -29,6 +29,8 @@ export default async function MessagePage({
     }
     throw err;
   }
+
+  const safeHtml = msg.html_body ? sanitizeHtml(msg.html_body) : null;
 
   return (
     <div className="flex h-screen">
@@ -63,8 +65,11 @@ export default async function MessagePage({
             <pre className="whitespace-pre-wrap font-sans text-sm text-gray-200 leading-relaxed">
               {msg.text_body}
             </pre>
-          ) : msg.html_body ? (
-            <HtmlBody html={msg.html_body} />
+          ) : safeHtml ? (
+            <div
+              className="prose prose-invert max-w-none text-sm"
+              dangerouslySetInnerHTML={{ __html: safeHtml }}
+            />
           ) : (
             <p className="text-gray-500 italic text-sm">No body content.</p>
           )}
