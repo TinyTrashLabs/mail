@@ -27,8 +27,9 @@ services:
       INGEST_SECRET: ${INGEST_SECRET}
       VIEWER_SECRET: ${VIEWER_SECRET}
       PORT: 3025
-    ports:
-      - "3025:3025"
+    # Intentionally no host port mapping — mail-store is reachable only on the
+    # compose network. The viewer talks to it via http://mail-store:3025 and
+    # the CF worker reaches it via the public mail-store fronting (separate setup).
 
   mail-viewer:
     build: ./mail-viewer

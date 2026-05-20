@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 export interface MailMessage {
   id: number;
   message_id: string | null;
@@ -22,6 +24,7 @@ export interface MessagesResponse {
 
 const STORE_URL = process.env.MAIL_STORE_URL!;
 const VIEWER_SECRET = process.env.VIEWER_SECRET!;
+const TTL_SECONDS = 5 * 60;
 
 export class MailStoreError extends Error {
   constructor(public status: number, message: string) {
@@ -29,29 +32,58 @@ export class MailStoreError extends Error {
   }
 }
 
-/** Fetch message list for a mailbox. viewer_user is the session username for server-side enforcement. */
+/**
+ * Mint a short-lived HMAC-signed viewer token. The mail-store verifies the
+ * HMAC before trusting the username — so even a bug in this process that
+ * lets a request control its own username gets caught.
+ */
+function mintViewerToken(user: string): string {
+  const payload = { user, exp: Math.floor(Date.now() / 1000) + TTL_SECONDS };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', VIEWER_SECRET).update(payloadB64).digest('base64url');
+  return `${payloadB64}.${sig}`;
+}
+
+async function callStore(path: string): Promise<Response> {
+  const url = `${STORE_URL}${path}`;
+  return fetch(url, {
+    headers: {
+      Authorization: `Bearer ${VIEWER_SECRET}`,
+      // username rides as a signed token, NOT as a query param the route trusts blindly
+      'X-Viewer-User': mintViewerToken(''),
+    },
+    cache: 'no-store',
+  });
+}
+
+async function callStoreAs(path: string, viewerUser: string): Promise<Response> {
+  const url = `${STORE_URL}${path}`;
+  return fetch(url, {
+    headers: {
+      Authorization: `Bearer ${VIEWER_SECRET}`,
+      'X-Viewer-User': mintViewerToken(viewerUser),
+    },
+    cache: 'no-store',
+  });
+}
+
 export async function fetchMessages(
   mailbox: string,
   viewerUser: string,
   page = 1,
   limit = 50
 ): Promise<MessagesResponse> {
-  const url = `${STORE_URL}/messages?mailbox=${encodeURIComponent(mailbox)}&viewer_user=${encodeURIComponent(viewerUser)}&page=${page}&limit=${limit}`;
-  const resp = await fetch(url, {
-    headers: { Authorization: `Bearer ${VIEWER_SECRET}` },
-    cache: 'no-store',
-  });
+  const qs = `?mailbox=${encodeURIComponent(mailbox)}&page=${page}&limit=${limit}`;
+  const resp = await callStoreAs(`/messages${qs}`, viewerUser);
   if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
   return resp.json();
 }
 
-/** Fetch a single message. viewer_user passed so mail-store enforces ownership server-side. */
 export async function fetchMessage(id: string | number, viewerUser: string): Promise<MailMessage> {
-  const url = `${STORE_URL}/messages/${id}?viewer_user=${encodeURIComponent(viewerUser)}`;
-  const resp = await fetch(url, {
-    headers: { Authorization: `Bearer ${VIEWER_SECRET}` },
-    cache: 'no-store',
-  });
+  const resp = await callStoreAs(`/messages/${encodeURIComponent(String(id))}`, viewerUser);
   if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
   return resp.json();
 }
+
+// Re-export for callers that haven't imported it directly
+export { callStore };

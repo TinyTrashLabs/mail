@@ -1,93 +1,82 @@
 /**
- * Unit tests for ingest parsing and duplicate handling logic.
- * Tests the business logic in isolation — no real DB.
+ * Tests for the real ingest field-extraction logic imported from
+ * src/ingest-fields.js — the same function the route handler uses.
  */
 
-import { resolveMailbox } from '../mailbox.js';
+import { extractFields } from '../ingest-fields.js';
 
-// Simulate the field extraction logic from routes/ingest.js
-function extractFields(parsed, envelopeFrom, envelopeTo) {
-  const mailbox = resolveMailbox(envelopeTo);
-  const messageId = parsed.messageId || null;
-  const toAddrs = (parsed.to?.value || []).map(a => ({ name: a.name, address: a.address }));
-  const ccAddrs = (parsed.cc?.value || []).map(a => ({ name: a.name, address: a.address }));
-  const attachmentsMeta = (parsed.attachments || []).map(a => ({
-    filename: a.filename,
-    contentType: a.contentType,
-    size: a.size,
-  }));
-  return {
-    mailbox,
-    messageId,
-    toAddrs,
-    ccAddrs,
-    attachmentsMeta,
-    subject: parsed.subject || '(no subject)',
-    fromAddr: parsed.from?.text || envelopeFrom || '',
-    textBody: parsed.text || null,
-    htmlBody: parsed.html || null,
-    receivedAt: parsed.date || null,
-  };
-}
-
-describe('ingest field extraction', () => {
-  test('extracts fields from a parsed message', () => {
+describe('extractFields', () => {
+  test('full message → all fields populated, mailbox resolved to owner', () => {
     const parsed = {
       messageId: '<abc123@mail.example.com>',
+      inReplyTo: '<parent@example.com>',
       subject: 'Hello TTL',
       from: { text: 'Alice <alice@example.com>' },
       to: { value: [{ name: 'David', address: 'david@tinytrashlabs.com' }] },
-      cc: { value: [] },
-      attachments: [],
-      text: 'Hi there',
-      html: null,
-      date: new Date('2026-05-20T12:00:00Z'),
-    };
-
-    const result = extractFields(parsed, 'alice@example.com', 'david@tinytrashlabs.com');
-    expect(result.mailbox).toBe('david');
-    expect(result.messageId).toBe('<abc123@mail.example.com>');
-    expect(result.subject).toBe('Hello TTL');
-    expect(result.toAddrs).toEqual([{ name: 'David', address: 'david@tinytrashlabs.com' }]);
-    expect(result.textBody).toBe('Hi there');
-    expect(result.htmlBody).toBeNull();
-  });
-
-  test('falls back to (no subject) when subject is missing', () => {
-    const parsed = { messageId: '<x>', to: null, cc: null, attachments: [], from: null };
-    const result = extractFields(parsed, 'a@b.com', 'contact@tinytrashlabs.com');
-    expect(result.subject).toBe('(no subject)');
-    expect(result.mailbox).toBe('shared');
-  });
-
-  test('falls back to envelope_from when parsed.from is missing', () => {
-    const parsed = { messageId: '<x>', to: null, cc: null, attachments: [], from: null };
-    const result = extractFields(parsed, 'sender@example.com', 'hello@tinytrashlabs.com');
-    expect(result.fromAddr).toBe('sender@example.com');
-  });
-
-  test('extracts attachments metadata', () => {
-    const parsed = {
-      messageId: '<y>',
-      to: null, cc: null, from: null,
+      cc: { value: [{ name: 'Shane', address: 'shane@tinytrashlabs.com' }] },
       attachments: [
         { filename: 'report.pdf', contentType: 'application/pdf', size: 1024 },
       ],
+      text: 'Hi there',
+      html: '<p>Hi there</p>',
+      date: new Date('2026-05-20T12:00:00Z'),
     };
-    const result = extractFields(parsed, '', 'david@tinytrashlabs.com');
-    expect(result.attachmentsMeta).toHaveLength(1);
-    expect(result.attachmentsMeta[0].filename).toBe('report.pdf');
-  });
-});
 
-describe('duplicate detection', () => {
-  test('ON CONFLICT DO NOTHING returns empty rows — caller should fetch existing id', () => {
-    // Simulates what the route does when result.rows is empty (duplicate)
-    const resultRows = []; // no RETURNING row → duplicate
-    const messageId = '<dup123@example.com>';
-    const isDuplicate = resultRows.length === 0;
-    expect(isDuplicate).toBe(true);
-    // Caller fetches existing row — we verify the logic path exists
-    expect(messageId).toBeTruthy(); // only fetches if messageId is non-null
+    const f = extractFields(parsed, 'alice@example.com', 'david@tinytrashlabs.com');
+    expect(f.mailbox).toBe('david');
+    expect(f.messageId).toBe('<abc123@mail.example.com>');
+    expect(f.inReplyTo).toBe('<parent@example.com>');
+    expect(f.subject).toBe('Hello TTL');
+    expect(f.fromAddr).toBe('Alice <alice@example.com>');
+    expect(f.toAddrs).toEqual([{ name: 'David', address: 'david@tinytrashlabs.com' }]);
+    expect(f.ccAddrs).toEqual([{ name: 'Shane', address: 'shane@tinytrashlabs.com' }]);
+    expect(f.textBody).toBe('Hi there');
+    expect(f.htmlBody).toBe('<p>Hi there</p>');
+    expect(f.attachmentsMeta).toEqual([
+      { filename: 'report.pdf', contentType: 'application/pdf', size: 1024 },
+    ]);
+  });
+
+  test('missing subject → (no subject) sentinel', () => {
+    const parsed = { messageId: '<x>', to: null, cc: null, attachments: [], from: null };
+    const f = extractFields(parsed, 'a@b.com', 'contact@tinytrashlabs.com');
+    expect(f.subject).toBe('(no subject)');
+    expect(f.mailbox).toBe('shared');
+  });
+
+  test('missing parsed.from → envelope_from fallback', () => {
+    const parsed = { messageId: '<x>', to: null, cc: null, attachments: [], from: null };
+    const f = extractFields(parsed, 'sender@example.com', 'hello@tinytrashlabs.com');
+    expect(f.fromAddr).toBe('sender@example.com');
+  });
+
+  test('missing envelope_to → shared mailbox', () => {
+    const parsed = { messageId: '<x>', to: null, cc: null, attachments: [], from: null };
+    expect(extractFields(parsed, 'a@b.com', null).mailbox).toBe('shared');
+    expect(extractFields(parsed, 'a@b.com', undefined).mailbox).toBe('shared');
+  });
+
+  test('case-insensitive personal address resolution', () => {
+    const parsed = { messageId: '<x>', to: null, cc: null, attachments: [], from: null };
+    expect(extractFields(parsed, '', 'David@tinytrashlabs.com').mailbox).toBe('david');
+    expect(extractFields(parsed, '', 'SHANE@tinytrashlabs.com').mailbox).toBe('shane');
+  });
+
+  test('attachments default to empty array, not undefined', () => {
+    const parsed = { messageId: '<x>', to: null, cc: null, from: null, attachments: undefined };
+    const f = extractFields(parsed, '', 'hello@tinytrashlabs.com');
+    expect(f.attachmentsMeta).toEqual([]);
+  });
+
+  test('null messageId is preserved (dedupe falls back to no-id insert)', () => {
+    const parsed = { messageId: null, to: null, cc: null, attachments: [], from: null };
+    const f = extractFields(parsed, '', 'hello@tinytrashlabs.com');
+    expect(f.messageId).toBeNull();
+  });
+
+  test('date falls back to "now" when parsed.date is missing', () => {
+    const parsed = { messageId: '<x>', to: null, cc: null, attachments: [], from: null };
+    const f = extractFields(parsed, '', 'hello@tinytrashlabs.com');
+    expect(f.receivedAt).toBeInstanceOf(Date);
   });
 });

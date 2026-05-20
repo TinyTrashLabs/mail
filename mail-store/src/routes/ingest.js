@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { simpleParser } from 'mailparser';
 import { pool } from '../db.js';
-import { resolveMailbox } from '../mailbox.js';
+import { extractFields } from '../ingest-fields.js';
 
 const router = Router();
 
@@ -22,15 +22,7 @@ router.post('/ingest', async (req, res) => {
     return res.status(400).json({ error: `parse failed: ${err.message}` });
   }
 
-  const mailbox = resolveMailbox(envelope_to);
-  const messageId = parsed.messageId || null;
-  const toAddrs = (parsed.to?.value || []).map(a => ({ name: a.name, address: a.address }));
-  const ccAddrs = (parsed.cc?.value || []).map(a => ({ name: a.name, address: a.address }));
-  const attachmentsMeta = (parsed.attachments || []).map(a => ({
-    filename: a.filename,
-    contentType: a.contentType,
-    size: a.size,
-  }));
+  const f = extractFields(parsed, envelope_from, envelope_to);
 
   try {
     const result = await pool.query(
@@ -41,29 +33,30 @@ router.post('/ingest', async (req, res) => {
        ON CONFLICT (message_id) DO NOTHING
        RETURNING id`,
       [
-        messageId,
-        parsed.inReplyTo || null,
-        parsed.subject || '(no subject)',
-        parsed.from?.text || envelope_from || '',
-        JSON.stringify(toAddrs),
-        JSON.stringify(ccAddrs),
-        parsed.date || new Date(),
-        parsed.text || null,
-        parsed.html || null,
-        JSON.stringify(attachmentsMeta),
-        mailbox,
+        f.messageId,
+        f.inReplyTo,
+        f.subject,
+        f.fromAddr,
+        JSON.stringify(f.toAddrs),
+        JSON.stringify(f.ccAddrs),
+        f.receivedAt,
+        f.textBody,
+        f.htmlBody,
+        JSON.stringify(f.attachmentsMeta),
+        f.mailbox,
       ]
     );
-    // Fix: return existing id on duplicate instead of null
+    // Return existing id on duplicate instead of null
     let id = result.rows[0]?.id ?? null;
-    if (id === null && messageId) {
+    const duplicate = result.rows.length === 0;
+    if (id === null && f.messageId) {
       const existing = await pool.query(
         'SELECT id FROM messages WHERE message_id = $1',
-        [messageId]
+        [f.messageId]
       );
       id = existing.rows[0]?.id ?? null;
     }
-    res.json({ id, mailbox, duplicate: result.rows.length === 0 });
+    res.json({ id, mailbox: f.mailbox, duplicate });
   } catch (err) {
     console.error('DB insert error:', err);
     res.status(500).json({ error: 'db error' });
