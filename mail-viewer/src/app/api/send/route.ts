@@ -3,7 +3,6 @@ import { authOptions } from '@/lib/auth';
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
 const FROM_DOMAIN = process.env.RESEND_FROM_DOMAIN || 'tinytrashlabs.com';
 
 /** Only these usernames may send as <name>@tinytrashlabs.com via Resend. */
@@ -49,6 +48,10 @@ export async function POST(req: NextRequest) {
   const extraHeaders: Record<string, string> = {};
   if (inReplyTo) extraHeaders['In-Reply-To'] = inReplyTo;
   if (references) extraHeaders['References'] = references;
+
+  // Instantiate Resend lazily inside the handler so the module can be imported
+  // during Next.js build without requiring RESEND_API_KEY at build time.
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
   const { data, error } = await resend.emails.send({
     from,
