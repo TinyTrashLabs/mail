@@ -19,6 +19,12 @@ export async function GET(req: NextRequest) {
     (PERSONAL.has(reqMailbox) && reqMailbox === username);
   if (!allowed) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
-  const data = await fetchMessages(reqMailbox, username, page);
-  return NextResponse.json(data);
+  try {
+    const data = await fetchMessages(reqMailbox, username, page);
+    return NextResponse.json(data);
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 500;
+    const message = err instanceof Error ? err.message : 'internal error';
+    return NextResponse.json({ error: message }, { status });
+  }
 }

@@ -26,6 +26,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'to, subject, body required' }, { status: 400 });
   }
 
+  // Validate `to` — must be a single RFC5322-ish email or array of them.
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const toList = Array.isArray(to) ? to : [to];
+  if (toList.length === 0 || !toList.every((addr) => typeof addr === 'string' && EMAIL_RE.test(addr))) {
+    return NextResponse.json({ error: 'invalid to address' }, { status: 400 });
+  }
+
+  // Validate inReplyTo / references — must look like a Message-ID (<...@...>).
+  // Reject anything with CR, LF, or NUL to prevent header injection.
+  const MSGID_SAFE_RE = /^[^\r\n\x00]*$/;
+  if (inReplyTo && !MSGID_SAFE_RE.test(inReplyTo)) {
+    return NextResponse.json({ error: 'invalid inReplyTo' }, { status: 400 });
+  }
+  if (references && !MSGID_SAFE_RE.test(references)) {
+    return NextResponse.json({ error: 'invalid references' }, { status: 400 });
+  }
+
   // from address is always derived from the authenticated session — never from the request body
   const from = `${username}@${FROM_DOMAIN}`;
 
@@ -35,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await resend.emails.send({
     from,
-    to: Array.isArray(to) ? to : [to],
+    to: toList,
     subject,
     text: body,
     ...(Object.keys(extraHeaders).length ? { headers: extraHeaders } : {}),
