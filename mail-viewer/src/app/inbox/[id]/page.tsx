@@ -30,7 +30,38 @@ export default async function MessagePage({
     throw err;
   }
 
-  const safeHtml = msg.html_body ? sanitizeHtml(msg.html_body) : null;
+  // Sanitize server-side with an allowlist tuned for HTML email.
+  // sanitize-html is pure Node — no jsdom, no ESM conflicts.
+  const safeHtml = msg.html_body
+    ? sanitizeHtml(msg.html_body, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+          'img', 'figure', 'figcaption', 'picture', 'source',
+          'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+          'caption', 'colgroup', 'col',
+          'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          'details', 'summary',
+          'span', 'div', 'section', 'article', 'header', 'footer', 'main',
+          'font', 'center',
+        ]),
+        allowedAttributes: {
+          ...sanitizeHtml.defaults.allowedAttributes,
+          '*': ['style', 'class', 'id', 'align', 'valign', 'bgcolor', 'width', 'height', 'border', 'cellpadding', 'cellspacing'],
+          'a': ['href', 'target', 'rel', 'name'],
+          'img': ['src', 'alt', 'title', 'width', 'height', 'style'],
+          'td': ['colspan', 'rowspan'],
+          'th': ['colspan', 'rowspan', 'scope'],
+          'font': ['color', 'size', 'face'],
+        },
+        allowedSchemes: ['http', 'https', 'mailto', 'cid'],
+        // Force target="_blank" rel on all links to prevent tab hijacking
+        transformTags: {
+          a: (_tagName, attribs) => ({
+            tagName: 'a',
+            attribs: { ...attribs, target: '_blank', rel: 'noopener noreferrer' },
+          }),
+        },
+      })
+    : null;
 
   return (
     <div className="flex h-screen">

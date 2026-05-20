@@ -49,9 +49,12 @@ export async function POST(req: NextRequest) {
   if (inReplyTo) extraHeaders['In-Reply-To'] = inReplyTo;
   if (references) extraHeaders['References'] = references;
 
+  if (!process.env.RESEND_API_KEY) {
+    return NextResponse.json({ error: 'mail sending not configured' }, { status: 503 });
+  }
   // Instantiate Resend lazily inside the handler so the module can be imported
   // during Next.js build without requiring RESEND_API_KEY at build time.
-  const resend = new Resend(process.env.RESEND_API_KEY!);
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
   const { data, error } = await resend.emails.send({
     from,
