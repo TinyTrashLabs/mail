@@ -44,18 +44,6 @@ function mintViewerToken(user: string): string {
   return `${payloadB64}.${sig}`;
 }
 
-async function callStore(path: string): Promise<Response> {
-  const url = `${STORE_URL}${path}`;
-  return fetch(url, {
-    headers: {
-      Authorization: `Bearer ${VIEWER_SECRET}`,
-      // username rides as a signed token, NOT as a query param the route trusts blindly
-      'X-Viewer-User': mintViewerToken(''),
-    },
-    cache: 'no-store',
-  });
-}
-
 async function callStoreAs(path: string, viewerUser: string): Promise<Response> {
   const url = `${STORE_URL}${path}`;
   return fetch(url, {
@@ -84,6 +72,3 @@ export async function fetchMessage(id: string | number, viewerUser: string): Pro
   if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
   return resp.json();
 }
-
-// Re-export for callers that haven't imported it directly
-export { callStore };
