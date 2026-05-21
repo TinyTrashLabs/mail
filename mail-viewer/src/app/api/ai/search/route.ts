@@ -4,6 +4,13 @@ import { authOptions } from '@/lib/auth';
 import { fetchMessages } from '@/lib/mail-store';
 import { getAIClient, AI_MODEL } from '@/lib/ai';
 
+const MAX_QUERY_LENGTH = 500;
+
+// Valid mailboxes a user can search — prevents IDOR via arbitrary mailbox param
+function allowedMailboxes(username: string): string[] {
+  return [username, 'shared'];
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -13,13 +20,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'AI not configured' }, { status: 503 });
   }
 
-  const { query, mailbox } = await req.json();
-  if (!query) return NextResponse.json({ error: 'query required' }, { status: 400 });
-
   const username = (session as { username?: string }).username ?? '';
+  const body = await req.json();
+  const query: string = typeof body.query === 'string' ? body.query.slice(0, MAX_QUERY_LENGTH) : '';
+  if (!query.trim()) return NextResponse.json({ error: 'query required' }, { status: 400 });
+
+  // Authorization: only allow mailboxes this user can legitimately access
+  const requestedMailbox: string = typeof body.mailbox === 'string' ? body.mailbox : username;
+  if (!allowedMailboxes(username).includes(requestedMailbox)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   // Fetch recent messages to search over (up to 100)
-  const data = await fetchMessages(mailbox || username, username, 1, 100).catch(() => ({
+  const data = await fetchMessages(requestedMailbox, username, 1, 100).catch(() => ({
     messages: [], total: 0, page: 1, limit: 100,
   }));
 
@@ -53,7 +66,11 @@ Respond ONLY with valid JSON in this exact shape:
     ],
   });
 
-  const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '{}';
+  const textBlock = message.content.find((b) => b.type === 'text');
+  const raw = textBlock?.type === 'text' ? textBlock.text.trim() : '';
+  if (!raw) {
+    return NextResponse.json({ results: [], explanation: 'No response from AI.' });
+  }
 
   let parsed: { indices?: number[]; explanation?: string } = {};
   try {

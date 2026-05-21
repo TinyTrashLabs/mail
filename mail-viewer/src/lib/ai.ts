@@ -1,7 +1,8 @@
 /**
  * Shared Anthropic client for AI features.
  * Requires ANTHROPIC_API_KEY in env.
- * Features gracefully degrade (return null) when the key is absent.
+ * All three AI routes call getAIClient() and return 503 when it returns null,
+ * so features degrade cleanly without the key.
  */
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -14,4 +15,3 @@ export function getAIClient(): Anthropic | null {
 }
 
 export const AI_MODEL = 'claude-haiku-4-5';
-export const AI_AVAILABLE = !!process.env.ANTHROPIC_API_KEY;
