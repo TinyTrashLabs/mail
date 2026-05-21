@@ -4,6 +4,16 @@ import { fetchMessage, MailStoreError } from '@/lib/mail-store';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import sanitizeHtml from 'sanitize-html';
+import { Sidebar } from '@/components/Sidebar';
+import {
+  ArrowLeft,
+  Reply,
+  Forward,
+  Trash2,
+  Star,
+  Paperclip,
+  MoreHorizontal,
+} from 'lucide-react';
 
 export default async function MessagePage({
   params,
@@ -12,7 +22,6 @@ export default async function MessagePage({
   params: { id: string };
   searchParams: { mailbox?: string };
 }) {
-  // Fix: check session here, not just in middleware — server component must validate ownership
   const session = await getServerSession(authOptions);
   if (!session) redirect('/api/auth/signin');
 
@@ -21,7 +30,6 @@ export default async function MessagePage({
 
   let msg;
   try {
-    // Pass username so mail-store enforces ownership — 403 if wrong user
     msg = await fetchMessage(params.id, username);
   } catch (err) {
     if (err instanceof MailStoreError && (err.status === 403 || err.status === 404)) {
@@ -30,8 +38,6 @@ export default async function MessagePage({
     throw err;
   }
 
-  // Sanitize server-side with an allowlist tuned for HTML email.
-  // sanitize-html is pure Node — no jsdom, no ESM conflicts.
   const safeHtml = msg.html_body
     ? sanitizeHtml(msg.html_body, {
         allowedTags: sanitizeHtml.defaults.allowedTags.concat([
@@ -53,7 +59,6 @@ export default async function MessagePage({
           'font': ['color', 'size', 'face'],
         },
         allowedSchemes: ['http', 'https', 'mailto', 'cid'],
-        // Force target="_blank" rel on all links to prevent tab hijacking
         transformTags: {
           a: (_tagName, attribs) => ({
             tagName: 'a',
@@ -64,75 +69,113 @@ export default async function MessagePage({
     : null;
 
   return (
-    <div className="flex h-screen">
-      <aside className="w-48 bg-[#f0ede4] border-r border-rule flex flex-col p-4 gap-1">
-        <div className="text-xs font-sans font-semibold text-ink-soft uppercase tracking-wider mb-3">
-          TTL Mail
-        </div>
-        <Link href={`/inbox?mailbox=${mailbox}`} className="text-sm font-sans text-ink-soft hover:text-ink">
-          ← Back
-        </Link>
-      </aside>
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar username={username} mailbox={mailbox} />
 
-      <main className="flex-1 overflow-y-auto p-8 max-w-3xl">
-        <h1 className="text-xl font-semibold mb-4">{msg.subject}</h1>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm mb-6 font-sans">
-          <dt className="font-medium text-ink-soft">From</dt>
-          <dd className="text-ink">{msg.from_addr}</dd>
-          <dt className="font-medium text-ink-soft">To</dt>
-          <dd className="text-ink">{msg.to_addrs.map((a) => a.address).join(', ')}</dd>
-          {msg.cc_addrs.length > 0 && (
-            <>
-              <dt className="font-medium text-ink-soft">CC</dt>
-              <dd className="text-ink">{msg.cc_addrs.map((a) => a.address).join(', ')}</dd>
-            </>
-          )}
-          <dt className="font-medium text-ink-soft">Date</dt>
-          <dd className="text-ink">{new Date(msg.received_at).toLocaleString()}</dd>
-        </dl>
-
-        <div className="border-t border-rule pt-6">
-          {msg.text_body ? (
-            <pre className="whitespace-pre-wrap font-mono text-sm text-ink leading-relaxed">
-              {msg.text_body}
-            </pre>
-          ) : safeHtml ? (
-            <div
-              className="prose max-w-none text-sm"
-              dangerouslySetInnerHTML={{ __html: safeHtml }}
-            />
-          ) : (
-            <p className="text-ink-soft italic text-sm font-sans">No body content.</p>
-          )}
-        </div>
-
-        {msg.attachments_meta.length > 0 && (
-          <div className="mt-6 border-t border-rule pt-4">
-            <div className="text-xs font-sans font-semibold text-ink-soft uppercase mb-2">Attachments</div>
-            <ul className="space-y-1">
-              {msg.attachments_meta.map((a, i) => (
-                <li key={i} className="text-sm font-sans text-ink">
-                  {a.filename}{' '}
-                  <span className="text-ink-soft">({a.contentType}, {a.size} bytes)</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="mt-8 flex gap-3">
-          <Link
-            href={`/compose?replyTo=${encodeURIComponent(msg.from_addr)}&subject=${encodeURIComponent(`Re: ${msg.subject}`)}&inReplyTo=${encodeURIComponent(msg.message_id || '')}`}
-            className="px-4 py-2 bg-teal hover:bg-teal-strong text-cream rounded-card text-sm font-sans font-medium transition-colors"
-          >
-            Reply
-          </Link>
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Toolbar */}
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-rule bg-cream flex-shrink-0">
           <Link
             href={`/inbox?mailbox=${mailbox}`}
-            className="px-4 py-2 bg-rule hover:bg-[#d8d4cb] text-ink rounded-card text-sm font-sans transition-colors"
+            className="flex items-center gap-1.5 text-sm font-sans text-ink-soft hover:text-ink transition-colors"
           >
+            <ArrowLeft size={15} strokeWidth={1.75} />
             Back
           </Link>
+          <div className="flex-1" />
+          {/* Action buttons */}
+          <div className="flex items-center gap-1">
+            <button className="p-1.5 rounded-card text-ink-soft hover:bg-rule hover:text-ink transition-colors" title="Star">
+              <Star size={15} strokeWidth={1.75} />
+            </button>
+            <button className="p-1.5 rounded-card text-ink-soft hover:bg-rule hover:text-ink transition-colors" title="Delete">
+              <Trash2 size={15} strokeWidth={1.75} />
+            </button>
+            <button className="p-1.5 rounded-card text-ink-soft hover:bg-rule hover:text-ink transition-colors" title="More">
+              <MoreHorizontal size={15} strokeWidth={1.75} />
+            </button>
+          </div>
+        </div>
+
+        {/* Message content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-8 py-8">
+            {/* Subject */}
+            <h1 className="text-xl font-serif font-semibold text-ink mb-6 leading-snug">
+              {msg.subject}
+            </h1>
+
+            {/* Header card */}
+            <div className="bg-[#f0ede4] rounded-card p-4 mb-6">
+              <dl className="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1.5 text-sm font-sans">
+                <dt className="font-medium text-ink-soft">From</dt>
+                <dd className="text-ink break-all">{msg.from_addr}</dd>
+                <dt className="font-medium text-ink-soft">To</dt>
+                <dd className="text-ink break-all">{msg.to_addrs.map((a) => a.address).join(', ')}</dd>
+                {msg.cc_addrs.length > 0 && (
+                  <>
+                    <dt className="font-medium text-ink-soft">CC</dt>
+                    <dd className="text-ink break-all">{msg.cc_addrs.map((a) => a.address).join(', ')}</dd>
+                  </>
+                )}
+                <dt className="font-medium text-ink-soft">Date</dt>
+                <dd className="text-ink">{new Date(msg.received_at).toLocaleString()}</dd>
+              </dl>
+            </div>
+
+            {/* Body */}
+            <div className="border-t border-rule pt-6">
+              {msg.text_body ? (
+                <pre className="whitespace-pre-wrap font-mono text-sm text-ink leading-relaxed">
+                  {msg.text_body}
+                </pre>
+              ) : safeHtml ? (
+                <div
+                  className="prose max-w-none text-sm"
+                  dangerouslySetInnerHTML={{ __html: safeHtml }}
+                />
+              ) : (
+                <p className="text-ink-soft italic text-sm font-sans">No body content.</p>
+              )}
+            </div>
+
+            {/* Attachments */}
+            {msg.attachments_meta.length > 0 && (
+              <div className="mt-8 border-t border-rule pt-5">
+                <div className="flex items-center gap-1.5 text-xs font-sans font-semibold text-ink-soft uppercase tracking-wider mb-3">
+                  <Paperclip size={12} strokeWidth={2} />
+                  Attachments ({msg.attachments_meta.length})
+                </div>
+                <ul className="space-y-1.5">
+                  {msg.attachments_meta.map((a, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm font-sans">
+                      <Paperclip size={13} strokeWidth={1.75} className="text-ink-soft flex-shrink-0" />
+                      <span className="text-ink">{a.filename}</span>
+                      <span className="text-ink-soft text-xs">({a.contentType}, {a.size} bytes)</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Reply/Forward actions */}
+            <div className="mt-8 pt-6 border-t border-rule flex gap-3">
+              <Link
+                href={`/compose?replyTo=${encodeURIComponent(msg.from_addr)}&subject=${encodeURIComponent(`Re: ${msg.subject}`)}&inReplyTo=${encodeURIComponent(msg.message_id || '')}`}
+                className="flex items-center gap-2 px-4 py-2 bg-teal hover:bg-teal-strong text-cream rounded-card text-sm font-sans font-medium transition-colors"
+              >
+                <Reply size={14} strokeWidth={2} />
+                Reply
+              </Link>
+              <Link
+                href={`/compose?subject=${encodeURIComponent(`Fwd: ${msg.subject}`)}`}
+                className="flex items-center gap-2 px-4 py-2 bg-rule hover:bg-[#d8d4cb] text-ink rounded-card text-sm font-sans transition-colors"
+              >
+                <Forward size={14} strokeWidth={2} />
+                Forward
+              </Link>
+            </div>
+          </div>
         </div>
       </main>
     </div>
