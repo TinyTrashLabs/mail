@@ -65,55 +65,55 @@ export default async function MessagePage({
 
   return (
     <div className="flex h-screen">
-      <aside className="w-48 bg-gray-900 border-r border-gray-800 flex flex-col p-4 gap-1">
-        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+      <aside className="w-48 bg-[#f0ede4] border-r border-rule flex flex-col p-4 gap-1">
+        <div className="text-xs font-sans font-semibold text-ink-soft uppercase tracking-wider mb-3">
           TTL Mail
         </div>
-        <Link href={`/inbox?mailbox=${mailbox}`} className="text-sm text-gray-300 hover:text-white">
+        <Link href={`/inbox?mailbox=${mailbox}`} className="text-sm font-sans text-ink-soft hover:text-ink">
           ← Back
         </Link>
       </aside>
 
       <main className="flex-1 overflow-y-auto p-8 max-w-3xl">
         <h1 className="text-xl font-semibold mb-4">{msg.subject}</h1>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm mb-6">
-          <dt className="font-medium text-gray-400">From</dt>
-          <dd className="text-gray-200">{msg.from_addr}</dd>
-          <dt className="font-medium text-gray-400">To</dt>
-          <dd className="text-gray-200">{msg.to_addrs.map((a) => a.address).join(', ')}</dd>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm mb-6 font-sans">
+          <dt className="font-medium text-ink-soft">From</dt>
+          <dd className="text-ink">{msg.from_addr}</dd>
+          <dt className="font-medium text-ink-soft">To</dt>
+          <dd className="text-ink">{msg.to_addrs.map((a) => a.address).join(', ')}</dd>
           {msg.cc_addrs.length > 0 && (
             <>
-              <dt className="font-medium text-gray-400">CC</dt>
-              <dd className="text-gray-200">{msg.cc_addrs.map((a) => a.address).join(', ')}</dd>
+              <dt className="font-medium text-ink-soft">CC</dt>
+              <dd className="text-ink">{msg.cc_addrs.map((a) => a.address).join(', ')}</dd>
             </>
           )}
-          <dt className="font-medium text-gray-400">Date</dt>
-          <dd className="text-gray-200">{new Date(msg.received_at).toLocaleString()}</dd>
+          <dt className="font-medium text-ink-soft">Date</dt>
+          <dd className="text-ink">{new Date(msg.received_at).toLocaleString()}</dd>
         </dl>
 
-        <div className="border-t border-gray-800 pt-6">
+        <div className="border-t border-rule pt-6">
           {msg.text_body ? (
-            <pre className="whitespace-pre-wrap font-sans text-sm text-gray-200 leading-relaxed">
+            <pre className="whitespace-pre-wrap font-mono text-sm text-ink leading-relaxed">
               {msg.text_body}
             </pre>
           ) : safeHtml ? (
             <div
-              className="prose prose-invert max-w-none text-sm"
+              className="prose max-w-none text-sm"
               dangerouslySetInnerHTML={{ __html: safeHtml }}
             />
           ) : (
-            <p className="text-gray-500 italic text-sm">No body content.</p>
+            <p className="text-ink-soft italic text-sm font-sans">No body content.</p>
           )}
         </div>
 
         {msg.attachments_meta.length > 0 && (
-          <div className="mt-6 border-t border-gray-800 pt-4">
-            <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Attachments</div>
+          <div className="mt-6 border-t border-rule pt-4">
+            <div className="text-xs font-sans font-semibold text-ink-soft uppercase mb-2">Attachments</div>
             <ul className="space-y-1">
               {msg.attachments_meta.map((a, i) => (
-                <li key={i} className="text-sm text-gray-300">
+                <li key={i} className="text-sm font-sans text-ink">
                   {a.filename}{' '}
-                  <span className="text-gray-500">({a.contentType}, {a.size} bytes)</span>
+                  <span className="text-ink-soft">({a.contentType}, {a.size} bytes)</span>
                 </li>
               ))}
             </ul>
@@ -123,13 +123,13 @@ export default async function MessagePage({
         <div className="mt-8 flex gap-3">
           <Link
             href={`/compose?replyTo=${encodeURIComponent(msg.from_addr)}&subject=${encodeURIComponent(`Re: ${msg.subject}`)}&inReplyTo=${encodeURIComponent(msg.message_id || '')}`}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium"
+            className="px-4 py-2 bg-teal hover:bg-teal-strong text-cream rounded-card text-sm font-sans font-medium transition-colors"
           >
             Reply
           </Link>
           <Link
             href={`/inbox?mailbox=${mailbox}`}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm"
+            className="px-4 py-2 bg-rule hover:bg-[#d8d4cb] text-ink rounded-card text-sm font-sans transition-colors"
           >
             Back
           </Link>
