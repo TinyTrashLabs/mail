@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_mailbox_date
   ON messages (mailbox, received_at DESC);
 
--- Per-user message state: read/starred flags keyed on (viewer_username, message_id)
+-- Per-user message state: read/starred flags keyed on (viewer_username, message_id).
+-- CREATE TABLE IF NOT EXISTS is safe to re-run — initSchema() in db.js executes
+-- this file on every boot, so the table is created automatically on first deploy.
 CREATE TABLE IF NOT EXISTS message_state (
   username   VARCHAR(64) NOT NULL,
   message_id BIGINT      NOT NULL REFERENCES messages(id) ON DELETE CASCADE,

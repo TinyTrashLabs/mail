@@ -1,34 +1,36 @@
 /**
- * E2E tests for the /api/messages/[id]/state route.
+ * E2E tests for the /api/message-states/[id] route.
  *
  * Unauthenticated tests run against prod and expect 401.
- * If the route is not yet deployed (returns 405), the tests are skipped
- * via an explicit pre-flight check so CI doesn't silently pass on a missing route.
+ * If the route is not yet deployed the pre-flight returns false and tests are
+ * skipped (explicit test.skip), so CI shows "skipped" not "failed" on old images.
  *
  * Authenticated tests require TEST_SESSION_COOKIE and TEST_MESSAGE_ID env vars.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, APIRequestContext } from '@playwright/test';
 
 const BASE = process.env.TEST_BASE_URL || 'http://10.1.22.142:3026';
 
-// Pre-flight: check whether the state route exists on the target server.
-// Route moved from /api/messages/:id/state to /api/message-states/:id.
-// Returns true when the new route responds (401 = auth check hit = deployed).
-async function stateRouteDeployed(request: Parameters<typeof test>[1] extends { request: infer R } ? R : never): Promise<boolean> {
-  try {
-    const res = await (request as { patch: (url: string, opts: Record<string, unknown>) => Promise<{ status: () => number }> })
-      .patch(`${BASE}/api/message-states/1`, { data: { is_read: true } });
-    // 401 = route exists but rejects unauthenticated (expected)
-    // 404/405 = route not deployed yet
-    return res.status() === 401;
-  } catch {
-    return false;
-  }
+/**
+ * Pre-flight: returns true when /api/message-states/1 responds with 401
+ * (route deployed, auth check fired). Returns false on 404/405 (not deployed)
+ * or any network error. Any other status (e.g. 500) propagates as a test
+ * failure rather than a silent skip.
+ */
+async function stateRouteDeployed(request: APIRequestContext): Promise<boolean> {
+  const res = await request.patch(`${BASE}/api/message-states/1`, {
+    data: { is_read: true },
+  });
+  const status = res.status();
+  if (status === 401) return true;       // deployed, auth working
+  if (status === 404 || status === 405) return false; // not deployed yet
+  // Anything else (500, 502, etc.) is a real problem — fail loudly
+  throw new Error(`State route pre-flight returned unexpected ${status} — check deployment`);
 }
 
-test.describe('PATCH /api/messages/:id/state — unauthenticated', () => {
+test.describe('PATCH /api/message-states/:id — unauthenticated', () => {
   test('returns 401 without session cookie', async ({ request }) => {
-    const deployed = await stateRouteDeployed(request as never);
+    const deployed = await stateRouteDeployed(request);
     test.skip(!deployed, 'State route not yet deployed on target server');
 
     const res = await request.patch(`${BASE}/api/message-states/1`, {
@@ -38,7 +40,7 @@ test.describe('PATCH /api/messages/:id/state — unauthenticated', () => {
   });
 
   test('returns 401 for starred toggle without session', async ({ request }) => {
-    const deployed = await stateRouteDeployed(request as never);
+    const deployed = await stateRouteDeployed(request);
     test.skip(!deployed, 'State route not yet deployed on target server');
 
     const res = await request.patch(`${BASE}/api/message-states/1`, {
@@ -47,8 +49,8 @@ test.describe('PATCH /api/messages/:id/state — unauthenticated', () => {
     expect(res.status()).toBe(401);
   });
 
-  test('returns 401 for invalid message id (auth checked first)', async ({ request }) => {
-    const deployed = await stateRouteDeployed(request as never);
+  test('returns 401 for non-numeric id (auth checked first)', async ({ request }) => {
+    const deployed = await stateRouteDeployed(request);
     test.skip(!deployed, 'State route not yet deployed on target server');
 
     const res = await request.patch(`${BASE}/api/message-states/abc`, {
@@ -59,7 +61,7 @@ test.describe('PATCH /api/messages/:id/state — unauthenticated', () => {
   });
 });
 
-test.describe('PATCH /api/messages/:id/state — authenticated', () => {
+test.describe('PATCH /api/message-states/:id — authenticated', () => {
   test.skip(!process.env.TEST_SESSION_COOKIE, 'Requires TEST_SESSION_COOKIE');
 
   test('marks message read', async ({ request }) => {
