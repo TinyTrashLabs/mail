@@ -106,4 +106,17 @@ describe('stripHtml', () => {
   it('preserves plain text unchanged', () => {
     expect(stripHtml('no tags here')).toBe('no tags here');
   });
+
+  it('removes script body contents', () => {
+    // Naive regex would leak 'alert(1)'; sanitize-html removes it
+    const result = stripHtml('<script>alert(1)</script>Hello');
+    expect(result).not.toContain('alert');
+    expect(result).toContain('Hello');
+  });
+
+  it('decodes HTML entities', () => {
+    // sanitize-html decodes entities when stripping
+    const result = stripHtml('Hello &amp; world');
+    expect(result).toBe('Hello & world');
+  });
 });

@@ -37,9 +37,30 @@ export function filterIndices(indices: unknown[] | undefined, length: number): n
 }
 
 /**
- * Strip HTML tags and collapse whitespace.
- * Used as a fallback to extract plain text from html_body for AI summarization.
+ * Strip HTML to plain text for AI summarization.
+ * Uses sanitize-html to remove script/style bodies (preventing prompt contamination),
+ * then decodes HTML entities via the 'he' library.
+ * Block-level tags get a space injected before stripping so adjacent text
+ * nodes don't run together.
  */
 export function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  // Dynamic require so this module stays importable in Jest without Next.js env
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const sanitize = require('sanitize-html') as (s: string, o: object) => string;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const he = require('he') as { decode: (s: string) => string };
+
+  // Replace block/separator tags with a space before stripping so adjacent
+  // text nodes are separated (e.g. "Line1<br/>Line2" → "Line1 Line2").
+  const spaced = html.replace(/<\/(p|div|li|dt|dd|tr|th|td|blockquote|pre|h[1-6])>|<(br|hr)\s*\/?>/gi, ' ');
+
+  const stripped = sanitize(spaced, {
+    allowedTags: [],
+    allowedAttributes: {},
+  });
+
+  // Decode HTML entities (&amp; → &, &lt; → <, etc.)
+  const decoded = he.decode(stripped);
+
+  return decoded.replace(/\s+/g, ' ').trim();
 }
