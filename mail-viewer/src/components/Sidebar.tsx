@@ -1,6 +1,5 @@
 'use client';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   Inbox,
   PenSquare,
@@ -35,7 +34,9 @@ export function Sidebar({ username, mailbox }: SidebarProps) {
     <aside className="w-52 bg-[#f0ede4] border-r border-rule flex flex-col h-full flex-shrink-0">
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 py-4 border-b border-rule">
-        <Image
+        {/* Plain <img> — bypasses next/image optimizer (no sharp installed in production image). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src="/ttl-mascot-logo.png"
           alt="TTL"
           width={28}
