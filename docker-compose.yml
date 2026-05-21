@@ -51,6 +51,8 @@ services:
       VIEWER_SECRET: ${VIEWER_SECRET}
       RESEND_API_KEY: ${RESEND_API_KEY}
       RESEND_FROM_DOMAIN: ${RESEND_FROM_DOMAIN:-tinytrashlabs.com}
+      # Optional: enables AI features (summarize, draft assist, smart search)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "3026:3000"
 

@@ -5,6 +5,8 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import sanitizeHtml from 'sanitize-html';
 import { Sidebar } from '@/components/Sidebar';
+import { AISummary } from '@/components/AISummary';
+import { stripHtml } from '@/lib/ai-utils';
 import {
   ArrowLeft,
   Reply,
@@ -70,6 +72,9 @@ export default async function MessagePage({
       })
     : null;
 
+  // Plain text body for AI summary (prefer text_body, fall back to stripped HTML)
+  const bodyForAI = msg.text_body || (safeHtml ? stripHtml(safeHtml) : '');
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar username={username} mailbox={mailbox} />
@@ -93,6 +98,16 @@ export default async function MessagePage({
             <h1 className="text-xl font-serif font-semibold text-ink mb-6 leading-snug">
               {msg.subject}
             </h1>
+
+            {/* AI Summary — only shown when body is available */}
+            {bodyForAI && (
+              <AISummary
+                messageId={msg.id}
+                subject={msg.subject}
+                from={msg.from_addr}
+                body={bodyForAI}
+              />
+            )}
 
             {/* Header card */}
             <div className="bg-[#f0ede4] rounded-card p-4 mb-6">
