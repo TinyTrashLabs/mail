@@ -3,11 +3,37 @@ import { authOptions } from '@/lib/auth';
 import { fetchMessages } from '@/lib/mail-store';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { Sidebar } from '@/components/Sidebar';
+import { Paperclip, Star } from 'lucide-react';
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  return isToday
+    ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function avatarInitial(from: string) {
+  const name = from.split('@')[0] || from;
+  return (name[0] || '?').toUpperCase();
+}
+
+function avatarColor(from: string): string {
+  const colors = [
+    'bg-teal-strong',
+    'bg-[#6db28b]',
+    'bg-[#d8a14a]',
+    'bg-[#7b8bb3]',
+    'bg-[#b37b9e]',
+  ];
+  let h = 0;
+  for (let i = 0; i < from.length; i++) h = (h * 31 + from.charCodeAt(i)) >>> 0;
+  return colors[h % colors.length];
 }
 
 export default async function InboxPage({
@@ -26,44 +52,23 @@ export default async function InboxPage({
     messages: [], total: 0, page: 1, limit: 50,
   }));
 
-  return (
-    <div className="flex h-screen">
-      <aside className="w-48 bg-[#f0ede4] border-r border-rule flex flex-col p-4 gap-1">
-        <div className="text-xs font-sans font-semibold text-ink-soft uppercase tracking-wider mb-3">
-          TTL Mail
-        </div>
-        <Link
-          href={`/inbox?mailbox=${username}`}
-          className={`px-3 py-2 rounded-card text-sm font-sans ${
-            mailbox === username
-              ? 'bg-teal text-cream font-medium'
-              : 'text-ink-soft hover:bg-rule'
-          }`}
-        >
-          {username}@
-        </Link>
-        <Link
-          href="/inbox?mailbox=shared"
-          className={`px-3 py-2 rounded-card text-sm font-sans ${
-            mailbox === 'shared'
-              ? 'bg-teal text-cream font-medium'
-              : 'text-ink-soft hover:bg-rule'
-          }`}
-        >
-          shared
-        </Link>
-        <div className="mt-auto">
-          <Link
-            href="/compose"
-            className="block w-full text-center px-3 py-2 bg-teal hover:bg-teal-strong text-cream rounded-card text-sm font-sans font-medium transition-colors"
-          >
-            Compose
-          </Link>
-        </div>
-      </aside>
+  const totalPages = Math.ceil(data.total / data.limit) || 1;
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="divide-y divide-rule">
+  return (
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar username={username} mailbox={mailbox} />
+
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-rule bg-cream flex-shrink-0">
+          <h1 className="text-sm font-sans font-semibold text-ink capitalize">{mailbox}</h1>
+          <span className="text-xs text-ink-soft font-sans">
+            {data.total} {data.total === 1 ? 'message' : 'messages'}
+          </span>
+        </div>
+
+        {/* Message list */}
+        <div className="flex-1 overflow-y-auto divide-y divide-rule">
           {data.messages.length === 0 && (
             <div className="p-12 text-ink-soft text-center text-sm font-sans">No messages.</div>
           )}
@@ -71,31 +76,49 @@ export default async function InboxPage({
             <Link
               key={msg.id}
               href={`/inbox/${msg.id}?mailbox=${mailbox}`}
-              className="flex items-start gap-4 px-6 py-4 hover:bg-[#f0ede4] transition-colors"
+              className="flex items-center gap-3 px-6 py-3 hover:bg-[#f0ede4] transition-colors group"
             >
-              <div className="w-8 h-8 rounded-full bg-teal-strong flex items-center justify-center text-sm font-bold text-cream flex-shrink-0">
-                {(msg.from_addr[0] || '?').toUpperCase()}
+              {/* Avatar */}
+              <div
+                className={`w-8 h-8 rounded-full ${avatarColor(msg.from_addr)} flex items-center justify-center text-xs font-bold text-cream flex-shrink-0`}
+              >
+                {avatarInitial(msg.from_addr)}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-medium text-ink truncate text-sm">{msg.from_addr}</span>
-                  <span className="text-xs text-ink-soft flex-shrink-0 font-sans">{formatDate(msg.received_at)}</span>
+
+              {/* Star placeholder — click to star (future) */}
+              <Star
+                size={13}
+                strokeWidth={1.5}
+                className="flex-shrink-0 text-rule group-hover:text-ink-soft transition-colors"
+              />
+
+              {/* Content */}
+              <div className="flex-1 min-w-0 grid grid-cols-[10rem_1fr_auto] items-baseline gap-2">
+                <span className="text-sm font-medium text-ink truncate">{msg.from_addr.split('@')[0]}</span>
+                <span className="text-sm text-ink-soft font-sans truncate">{msg.subject}</span>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {msg.attachments_meta?.length > 0 && (
+                    <Paperclip size={12} className="text-ink-soft" strokeWidth={1.75} />
+                  )}
+                  <span className="text-xs text-ink-soft font-sans whitespace-nowrap">
+                    {formatDate(msg.received_at)}
+                  </span>
                 </div>
-                <div className="text-sm text-ink-soft font-sans truncate">{msg.subject}</div>
               </div>
             </Link>
           ))}
         </div>
 
-        {data.total > data.limit && (
-          <div className="flex justify-center items-center gap-4 p-4 text-sm font-sans">
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center gap-4 px-6 py-3 border-t border-rule text-sm font-sans flex-shrink-0">
             {page > 1 && (
               <Link href={`/inbox?mailbox=${mailbox}&page=${page - 1}`} className="text-teal-strong hover:underline">
                 ← Prev
               </Link>
             )}
-            <span className="text-ink-soft">{page} / {Math.ceil(data.total / data.limit)}</span>
-            {page < Math.ceil(data.total / data.limit) && (
+            <span className="text-ink-soft">{page} / {totalPages}</span>
+            {page < totalPages && (
               <Link href={`/inbox?mailbox=${mailbox}&page=${page + 1}`} className="text-teal-strong hover:underline">
                 Next →
               </Link>
