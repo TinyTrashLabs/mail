@@ -3,7 +3,7 @@ main = "index.js"
 compatibility_date = "2024-09-23"
 
 [vars]
-MAIL_STORE_URL = "https://mail-store.your-tunnel.example.com"
+MAIL_STORE_URL = "https://mail-ingest.tinytrashlabs.com"
 
 # INGEST_SECRET must be set as a Wrangler secret:
 # wrangler secret put INGEST_SECRET
