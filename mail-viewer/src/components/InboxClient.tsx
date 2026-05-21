@@ -73,6 +73,17 @@ function normalizeSubject(subject: string): string {
     .toLowerCase();
 }
 
+/**
+ * Thread key: normalized subject + sender domain.
+ * Using sender domain (not full address) groups replies from multiple
+ * addresses at the same domain while preventing false grouping of
+ * unrelated messages that happen to share a common subject like "Hello".
+ */
+function threadKey(msg: { subject: string; from_addr: string }): string {
+  const domain = msg.from_addr.split('@')[1]?.toLowerCase() ?? msg.from_addr.toLowerCase();
+  return `${normalizeSubject(msg.subject)}|${domain}`;
+}
+
 type ViewMode = 'all' | 'unread' | 'starred';
 
 export function InboxClient({
@@ -111,18 +122,18 @@ export function InboxClient({
     return true;
   });
 
-  // Thread grouping: group consecutive messages with same normalized subject
+  // Thread grouping: group by normalized subject + sender domain to avoid
+  // falsely threading unrelated messages that share a common subject.
   const threaded: { msg: Message; threadCount: number; isThreadHead: boolean }[] = [];
-  const threadMap = new Map<string, number>(); // normalized subject → count
+  const threadMap = new Map<string, number>(); // thread key → count
   for (const msg of filtered) {
-    const key = normalizeSubject(msg.subject);
-    const count = (threadMap.get(key) ?? 0) + 1;
-    threadMap.set(key, count);
+    const key = threadKey(msg);
+    threadMap.set(key, (threadMap.get(key) ?? 0) + 1);
   }
-  // Second pass — mark first occurrence of each subject as thread head
+  // Second pass — mark first occurrence of each thread key as head
   const seenThreads = new Set<string>();
   for (const msg of filtered) {
-    const key = normalizeSubject(msg.subject);
+    const key = threadKey(msg);
     const count = threadMap.get(key) ?? 1;
     const isHead = !seenThreads.has(key);
     if (isHead) seenThreads.add(key);

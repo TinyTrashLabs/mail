@@ -59,15 +59,21 @@ interface MockMsg {
   from_addr: string;
 }
 
+/** Mirror of threadKey in InboxClient — subject + sender domain */
+function threadKey(msg: MockMsg): string {
+  const domain = msg.from_addr.split('@')[1]?.toLowerCase() ?? msg.from_addr.toLowerCase();
+  return `${normalizeSubject(msg.subject)}|${domain}`;
+}
+
 function groupThreads(messages: MockMsg[]) {
   const threadMap = new Map<string, number>();
   for (const msg of messages) {
-    const key = normalizeSubject(msg.subject);
+    const key = threadKey(msg);
     threadMap.set(key, (threadMap.get(key) ?? 0) + 1);
   }
   const seenThreads = new Set<string>();
   return messages.map((msg) => {
-    const key = normalizeSubject(msg.subject);
+    const key = threadKey(msg);
     const threadCount = threadMap.get(key) ?? 1;
     const isThreadHead = !seenThreads.has(key);
     if (isThreadHead) seenThreads.add(key);
@@ -83,11 +89,11 @@ describe('thread grouping', () => {
     expect(result[0].isThreadHead).toBe(true);
   });
 
-  it('groups Re: replies with original', () => {
+  it('groups Re: replies within the same sender domain', () => {
     const msgs: MockMsg[] = [
-      { id: 1, subject: 'Hello', from_addr: 'a@b.com' },
-      { id: 2, subject: 'Re: Hello', from_addr: 'b@b.com' },
-      { id: 3, subject: 'Re: Hello', from_addr: 'c@b.com' },
+      { id: 1, subject: 'Hello', from_addr: 'alice@corp.com' },
+      { id: 2, subject: 'Re: Hello', from_addr: 'bob@corp.com' },
+      { id: 3, subject: 'Re: Hello', from_addr: 'carol@corp.com' },
     ];
     const result = groupThreads(msgs);
     expect(result[0].threadCount).toBe(3);
@@ -97,10 +103,23 @@ describe('thread grouping', () => {
     expect(result[2].isThreadHead).toBe(false);
   });
 
+  it('does NOT group same subject from different domains', () => {
+    // "Hello" from acme.com and "Re: Hello" from other.com are different threads
+    const msgs: MockMsg[] = [
+      { id: 1, subject: 'Hello', from_addr: 'x@acme.com' },
+      { id: 2, subject: 'Re: Hello', from_addr: 'y@other.com' },
+    ];
+    const result = groupThreads(msgs);
+    expect(result[0].threadCount).toBe(1);
+    expect(result[1].threadCount).toBe(1);
+    expect(result[0].isThreadHead).toBe(true);
+    expect(result[1].isThreadHead).toBe(true);
+  });
+
   it('treats distinct subjects as separate threads', () => {
     const msgs: MockMsg[] = [
       { id: 1, subject: 'Hello', from_addr: 'a@b.com' },
-      { id: 2, subject: 'World', from_addr: 'b@b.com' },
+      { id: 2, subject: 'World', from_addr: 'a@b.com' },
     ];
     const result = groupThreads(msgs);
     expect(result[0].threadCount).toBe(1);

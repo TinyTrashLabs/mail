@@ -15,6 +15,7 @@ import { Star } from 'lucide-react';
 interface MessageActionsProps {
   messageId: number;
   initialStarred: boolean;
+  initialRead: boolean;
   replyHref: string;
   backHref: string;
 }
@@ -22,20 +23,22 @@ interface MessageActionsProps {
 export function MessageActions({
   messageId,
   initialStarred,
+  initialRead,
   replyHref,
   backHref,
 }: MessageActionsProps) {
   const router = useRouter();
   const [starred, setStarred] = useState(initialStarred);
 
-  // Auto-mark read on mount
+  // Auto-mark read on mount — skip if already read to avoid unnecessary PATCH
   useEffect(() => {
+    if (initialRead) return;
     fetch(`/api/messages/${messageId}/state`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_read: true }),
     }).catch(() => {/* best-effort */});
-  }, [messageId]);
+  }, [messageId, initialRead]);
 
   const toggleStar = useCallback(async () => {
     const next = !starred;

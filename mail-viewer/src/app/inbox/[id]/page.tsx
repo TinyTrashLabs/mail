@@ -81,6 +81,7 @@ export default async function MessagePage({
     ? await fetchMessageStates([msg.id], username).catch((): import('@/lib/mail-store').StateMap => ({}))
     : ({} as import('@/lib/mail-store').StateMap);
   const initialStarred = stateMap[String(msg.id)]?.is_starred ?? false;
+  const initialRead = stateMap[String(msg.id)]?.is_read ?? false;
 
   const replyHref = `/compose?replyTo=${encodeURIComponent(msg.from_addr)}&subject=${encodeURIComponent(`Re: ${msg.subject}`)}&inReplyTo=${encodeURIComponent(msg.message_id || '')}`;
   const backHref = `/inbox?mailbox=${mailbox}`;
@@ -102,6 +103,7 @@ export default async function MessagePage({
           <MessageActions
             messageId={msg.id}
             initialStarred={initialStarred}
+            initialRead={initialRead}
             replyHref={replyHref}
             backHref={backHref}
           />
