@@ -27,13 +27,14 @@ export async function POST(req: NextRequest) {
 
   if (!subject) return NextResponse.json({ error: 'subject required' }, { status: 400 });
 
-  const message = await client.messages.create({
-    model: AI_MODEL,
-    max_tokens: 512,
-    messages: [
-      {
-        role: 'user',
-        content: `Draft a ${tone} email reply or message. Return only the email body — no subject line, no "From:" header, no sign-off unless natural.
+  try {
+    const message = await client.messages.create({
+      model: AI_MODEL,
+      max_tokens: 512,
+      messages: [
+        {
+          role: 'user',
+          content: `Draft a ${tone} email reply or message. Return only the email body — no subject line, no "From:" header, no sign-off unless natural.
 
 From: ${username} (TTL team)
 To: ${to || '(recipient)'}
@@ -41,14 +42,18 @@ Subject: ${subject}
 ${context ? `\nContext / instructions: ${context}` : ''}
 
 Write the email body:`,
-      },
-    ],
-  });
+        },
+      ],
+    });
 
-  const textBlock = message.content.find((b) => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    return NextResponse.json({ error: 'No response from AI' }, { status: 502 });
+    const textBlock = message.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      return NextResponse.json({ error: 'No response from AI' }, { status: 502 });
+    }
+
+    return NextResponse.json({ draft: textBlock.text });
+  } catch (err) {
+    console.error('[ai/draft] error:', err);
+    return NextResponse.json({ error: 'AI request failed' }, { status: 502 });
   }
-
-  return NextResponse.json({ draft: textBlock.text });
 }

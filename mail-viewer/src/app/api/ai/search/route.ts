@@ -3,13 +3,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { fetchMessages } from '@/lib/mail-store';
 import { getAIClient, AI_MODEL } from '@/lib/ai';
+import { allowedMailboxes, parseAISearchResponse, filterIndices } from '@/lib/ai-utils';
 
 const MAX_QUERY_LENGTH = 500;
-
-// Valid mailboxes a user can search — prevents IDOR via arbitrary mailbox param
-function allowedMailboxes(username: string): string[] {
-  return [username, 'shared'];
-}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -40,20 +36,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ results: [], explanation: 'No messages to search.' });
   }
 
-  // Build a compact index for Claude to reason over
+  // Build a compact index — guard against null received_at
   const index = data.messages
-    .map((m, i) =>
-      `[${i}] id=${m.id} from="${m.from_addr}" subject="${m.subject}" date="${m.received_at.slice(0, 10)}"`
-    )
+    .map((m, i) => {
+      const date = m.received_at ? m.received_at.slice(0, 10) : 'unknown';
+      return `[${i}] id=${m.id} from="${m.from_addr}" subject="${m.subject}" date="${date}"`;
+    })
     .join('\n');
 
-  const message = await client.messages.create({
-    model: AI_MODEL,
-    max_tokens: 512,
-    messages: [
-      {
-        role: 'user',
-        content: `You are a smart email search assistant. Given a natural-language query and a list of emails, return the indices of matching emails as a JSON array, plus a one-sentence explanation.
+  try {
+    const message = await client.messages.create({
+      model: AI_MODEL,
+      max_tokens: 512,
+      messages: [
+        {
+          role: 'user',
+          content: `You are a smart email search assistant. Given a natural-language query and a list of emails, return the indices of matching emails as a JSON array, plus a one-sentence explanation.
 
 Query: "${query}"
 
@@ -62,29 +60,26 @@ ${index}
 
 Respond ONLY with valid JSON in this exact shape:
 {"indices": [0, 3, 7], "explanation": "Found 3 emails about invoices from Bob."}`,
-      },
-    ],
-  });
+        },
+      ],
+    });
 
-  const textBlock = message.content.find((b) => b.type === 'text');
-  const raw = textBlock?.type === 'text' ? textBlock.text.trim() : '';
-  if (!raw) {
-    return NextResponse.json({ results: [], explanation: 'No response from AI.' });
+    const textBlock = message.content.find((b) => b.type === 'text');
+    const raw = textBlock?.type === 'text' ? textBlock.text.trim() : '';
+    if (!raw) {
+      return NextResponse.json({ results: [], explanation: 'No response from AI.' });
+    }
+
+    const parsed = parseAISearchResponse(raw);
+    if (!parsed) {
+      return NextResponse.json({ results: [], explanation: 'Could not parse AI response.' });
+    }
+
+    const indices = filterIndices(parsed.indices, data.messages.length);
+    const results = indices.map((i) => data.messages[i]);
+    return NextResponse.json({ results, explanation: parsed.explanation || '' });
+  } catch (err) {
+    console.error('[ai/search] error:', err);
+    return NextResponse.json({ error: 'AI request failed' }, { status: 502 });
   }
-
-  let parsed: { indices?: number[]; explanation?: string } = {};
-  try {
-    // Strip markdown code fences if Claude wrapped it
-    const clean = raw.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
-    parsed = JSON.parse(clean);
-  } catch {
-    return NextResponse.json({ results: [], explanation: 'Could not parse AI response.' });
-  }
-
-  const indices = (parsed.indices || []).filter(
-    (i): i is number => typeof i === 'number' && i >= 0 && i < data.messages.length
-  );
-
-  const results = indices.map((i) => data.messages[i]);
-  return NextResponse.json({ results, explanation: parsed.explanation || '' });
 }

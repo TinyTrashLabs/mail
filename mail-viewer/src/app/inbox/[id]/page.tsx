@@ -6,6 +6,7 @@ import Link from 'next/link';
 import sanitizeHtml from 'sanitize-html';
 import { Sidebar } from '@/components/Sidebar';
 import { AISummary } from '@/components/AISummary';
+import { stripHtml } from '@/lib/ai-utils';
 import {
   ArrowLeft,
   Reply,
@@ -72,7 +73,7 @@ export default async function MessagePage({
     : null;
 
   // Plain text body for AI summary (prefer text_body, fall back to stripped HTML)
-  const bodyForAI = msg.text_body || (safeHtml ? safeHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '');
+  const bodyForAI = msg.text_body || (safeHtml ? stripHtml(safeHtml) : '');
 
   return (
     <div className="flex h-screen overflow-hidden">

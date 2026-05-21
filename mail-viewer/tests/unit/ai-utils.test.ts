@@ -1,39 +1,13 @@
 /**
- * Unit tests for AI route utility logic (no real Anthropic calls).
+ * Unit tests for AI utility functions.
+ * Imports from the REAL src/lib/ai-utils.ts — tests exercise actual route logic.
  */
-
-// ── allowedMailboxes ──────────────────────────────────────────────────────────
-// Inline the logic from search/route.ts so tests stay independent
-function allowedMailboxes(username: string): string[] {
-  return [username, 'shared'];
-}
-
-// ── parseAISearchResponse ────────────────────────────────────────────────────
-// Mirrors the JSON/code-fence parsing in search/route.ts
-function parseAISearchResponse(raw: string): { indices?: number[]; explanation?: string } | null {
-  if (!raw.trim()) return null;
-  try {
-    const clean = raw.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return null;
-  }
-}
-
-// ── filterIndices ─────────────────────────────────────────────────────────────
-function filterIndices(indices: unknown[] | undefined, length: number): number[] {
-  return (indices || []).filter(
-    (i): i is number => typeof i === 'number' && i >= 0 && i < length
-  );
-}
-
-// ── stripHtml ─────────────────────────────────────────────────────────────────
-// Matches the HTML-strip fallback in inbox/[id]/page.tsx
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// ── tests ──────────────────────────────────────────────────────────────────────
+import {
+  allowedMailboxes,
+  parseAISearchResponse,
+  filterIndices,
+  stripHtml,
+} from '../../src/lib/ai-utils';
 
 describe('allowedMailboxes', () => {
   it('allows own username and shared', () => {
@@ -44,46 +18,40 @@ describe('allowedMailboxes', () => {
     const allowed = allowedMailboxes('alice');
     expect(allowed.includes('bob')).toBe(false);
     expect(allowed.includes('admin')).toBe(false);
-    expect(allowed.includes('')).toBe(false);
   });
 
-  it('handles empty username (unauthenticated edge case)', () => {
-    const allowed = allowedMailboxes('');
-    // empty username → only 'shared' is reachable ('' would match own mailbox but that's a degenerate case)
-    expect(allowed.includes('shared')).toBe(true);
+  it('always includes shared', () => {
+    expect(allowedMailboxes('anyone').includes('shared')).toBe(true);
   });
 });
 
 describe('parseAISearchResponse', () => {
   it('parses clean JSON', () => {
-    const raw = '{"indices":[0,2],"explanation":"Found 2 matching emails."}';
-    const result = parseAISearchResponse(raw);
-    expect(result).toEqual({ indices: [0, 2], explanation: 'Found 2 matching emails.' });
+    const result = parseAISearchResponse('{"indices":[0,2],"explanation":"Two matches."}');
+    expect(result).toEqual({ indices: [0, 2], explanation: 'Two matches.' });
   });
 
-  it('strips markdown code fences', () => {
-    const raw = '```json\n{"indices":[1],"explanation":"One match."}\n```';
-    const result = parseAISearchResponse(raw);
+  it('strips json code fences', () => {
+    const result = parseAISearchResponse('```json\n{"indices":[1],"explanation":"One."}\n```');
     expect(result?.indices).toEqual([1]);
   });
 
   it('strips plain code fences', () => {
-    const raw = '```\n{"indices":[],"explanation":"None."}\n```';
-    const result = parseAISearchResponse(raw);
+    const result = parseAISearchResponse('```\n{"indices":[],"explanation":"None."}\n```');
     expect(result?.indices).toEqual([]);
   });
 
-  it('returns null on empty input', () => {
+  it('returns null on empty string', () => {
     expect(parseAISearchResponse('')).toBeNull();
-    expect(parseAISearchResponse('  ')).toBeNull();
+    expect(parseAISearchResponse('   ')).toBeNull();
   });
 
   it('returns null on invalid JSON', () => {
-    expect(parseAISearchResponse('not json at all')).toBeNull();
+    expect(parseAISearchResponse('not json')).toBeNull();
     expect(parseAISearchResponse('{bad}')).toBeNull();
   });
 
-  it('handles missing fields gracefully', () => {
+  it('handles partial response (no indices)', () => {
     const result = parseAISearchResponse('{"explanation":"Only explanation."}');
     expect(result?.indices).toBeUndefined();
     expect(result?.explanation).toBe('Only explanation.');
@@ -93,7 +61,7 @@ describe('parseAISearchResponse', () => {
 describe('filterIndices', () => {
   const length = 5;
 
-  it('returns valid in-bounds indices', () => {
+  it('keeps valid in-bounds indices', () => {
     expect(filterIndices([0, 2, 4], length)).toEqual([0, 2, 4]);
   });
 
@@ -111,6 +79,10 @@ describe('filterIndices', () => {
 
   it('handles undefined gracefully', () => {
     expect(filterIndices(undefined, length)).toEqual([]);
+  });
+
+  it('handles zero-length array', () => {
+    expect(filterIndices([0, 1], 0)).toEqual([]);
   });
 });
 

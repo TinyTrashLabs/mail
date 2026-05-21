@@ -21,26 +21,31 @@ export async function POST(req: NextRequest) {
 
   if (!emailBody) return NextResponse.json({ error: 'body required' }, { status: 400 });
 
-  const message = await client.messages.create({
-    model: AI_MODEL,
-    max_tokens: 256,
-    messages: [
-      {
-        role: 'user',
-        content: `Summarize this email in 2-3 sentences. Be concise and direct.
+  try {
+    const message = await client.messages.create({
+      model: AI_MODEL,
+      max_tokens: 256,
+      messages: [
+        {
+          role: 'user',
+          content: `Summarize this email in 2-3 sentences. Be concise and direct.
 
 From: ${from}
 Subject: ${subject}
 ---
 ${emailBody}`,
-      },
-    ],
-  });
+        },
+      ],
+    });
 
-  const textBlock = message.content.find((b) => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    return NextResponse.json({ error: 'No response from AI' }, { status: 502 });
+    const textBlock = message.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      return NextResponse.json({ error: 'No response from AI' }, { status: 502 });
+    }
+
+    return NextResponse.json({ summary: textBlock.text });
+  } catch (err) {
+    console.error('[ai/summarize] error:', err);
+    return NextResponse.json({ error: 'AI request failed' }, { status: 502 });
   }
-
-  return NextResponse.json({ summary: textBlock.text });
 }
