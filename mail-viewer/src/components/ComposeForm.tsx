@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Send, X } from 'lucide-react';
+import { AIDraftAssist } from '@/components/AIDraftAssist';
 
 interface ComposeFormProps {
   defaultTo?: string;
@@ -59,13 +60,14 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
 
       {/* Compose area */}
       <div className="flex-1 overflow-y-auto p-8">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto space-y-4">
           {error && (
-            <div className="mb-4 p-3 bg-err/10 border border-err rounded-card text-sm font-sans text-err">
+            <div className="p-3 bg-err/10 border border-err rounded-card text-sm font-sans text-err">
               {error}
             </div>
           )}
 
+          {/* Compose card */}
           <div className="border border-rule rounded-card overflow-hidden">
             {/* To */}
             <div className="flex items-center border-b border-rule">
@@ -98,14 +100,21 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={18}
+              rows={14}
               className="w-full bg-transparent px-4 py-4 text-sm font-mono text-ink focus:outline-none resize-none placeholder:text-ink-soft/50"
               placeholder="Write your message…"
             />
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-3 mt-4">
+          {/* AI Draft Assist */}
+          <AIDraftAssist
+            to={to}
+            subject={subject}
+            onDraft={(draft) => setBody(draft)}
+          />
+
+          {/* Send / Discard */}
+          <div className="flex items-center gap-3">
             <button
               onClick={send}
               disabled={sending || !to || !subject || !body}

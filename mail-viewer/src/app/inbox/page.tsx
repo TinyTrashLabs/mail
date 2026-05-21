@@ -4,6 +4,7 @@ import { fetchMessages } from '@/lib/mail-store';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
+import { AISearchBar } from '@/components/AISearchBar';
 import { Paperclip, Star } from 'lucide-react';
 
 function formatDate(iso: string) {
@@ -60,11 +61,14 @@ export default async function InboxPage({
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-rule bg-cream flex-shrink-0">
-          <h1 className="text-sm font-sans font-semibold text-ink capitalize">{mailbox}</h1>
-          <span className="text-xs text-ink-soft font-sans">
-            {data.total} {data.total === 1 ? 'message' : 'messages'}
-          </span>
+        <div className="px-6 pt-3 pb-2 border-b border-rule bg-cream flex-shrink-0 space-y-2">
+          <div className="flex items-center justify-between">
+            <h1 className="text-sm font-sans font-semibold text-ink capitalize">{mailbox}</h1>
+            <span className="text-xs text-ink-soft font-sans">
+              {data.total} {data.total === 1 ? 'message' : 'messages'}
+            </span>
+          </div>
+          <AISearchBar mailbox={mailbox} />
         </div>
 
         {/* Message list */}
