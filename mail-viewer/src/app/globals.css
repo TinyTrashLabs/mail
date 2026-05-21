@@ -1,3 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Lora', Georgia, serif;
+    background-color: #fbfaf6;
+    color: #1f2333;
+  }
+
+  /* Prose overrides for email body rendering on light bg */
+  .prose {
+    --tw-prose-body: #1f2333;
+    --tw-prose-headings: #1f2333;
+    --tw-prose-links: #5d9999;
+    --tw-prose-bold: #1f2333;
+    --tw-prose-code: #1f2333;
+    --tw-prose-pre-bg: #f0ede4;
+    --tw-prose-th-borders: #e6e2d8;
+    --tw-prose-td-borders: #e6e2d8;
+  }
+}
