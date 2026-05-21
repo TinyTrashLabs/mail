@@ -1,14 +1,9 @@
 'use client';
 import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname, useSearchParams } from 'next/navigation';
 import {
   Inbox,
-  Send,
-  FileText,
-  Trash2,
   PenSquare,
-  Star,
   Users,
 } from 'lucide-react';
 
@@ -18,50 +13,26 @@ interface SidebarProps {
 }
 
 export function Sidebar({ username, mailbox }: SidebarProps) {
-  const pathname = usePathname();
-  const isInbox = pathname.startsWith('/inbox');
-
+  // Only link to mailboxes that are actually implemented
   const navItems = [
-    {
-      label: username ? `${username}@` : 'Inbox',
-      href: `/inbox?mailbox=${username}`,
-      icon: Inbox,
-      active: isInbox && mailbox === username,
-    },
+    ...(username
+      ? [{
+          label: `${username}@`,
+          href: `/inbox?mailbox=${username}`,
+          icon: Inbox,
+          active: mailbox === username,
+        }]
+      : []),
     {
       label: 'Shared',
       href: '/inbox?mailbox=shared',
       icon: Users,
-      active: isInbox && mailbox === 'shared',
-    },
-    {
-      label: 'Starred',
-      href: '/inbox?mailbox=starred',
-      icon: Star,
-      active: isInbox && mailbox === 'starred',
-    },
-    {
-      label: 'Sent',
-      href: '/inbox?mailbox=sent',
-      icon: Send,
-      active: isInbox && mailbox === 'sent',
-    },
-    {
-      label: 'Drafts',
-      href: '/inbox?mailbox=drafts',
-      icon: FileText,
-      active: isInbox && mailbox === 'drafts',
-    },
-    {
-      label: 'Trash',
-      href: '/inbox?mailbox=trash',
-      icon: Trash2,
-      active: isInbox && mailbox === 'trash',
+      active: mailbox === 'shared',
     },
   ];
 
   return (
-    <aside className="w-52 bg-[#f0ede4] border-r border-rule flex flex-col h-full">
+    <aside className="w-52 bg-[#f0ede4] border-r border-rule flex flex-col h-full flex-shrink-0">
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 py-4 border-b border-rule">
         <Image

@@ -9,10 +9,7 @@ import {
   ArrowLeft,
   Reply,
   Forward,
-  Trash2,
-  Star,
   Paperclip,
-  MoreHorizontal,
 } from 'lucide-react';
 
 export default async function MessagePage({
@@ -22,6 +19,7 @@ export default async function MessagePage({
   params: { id: string };
   searchParams: { mailbox?: string };
 }) {
+  // Fix: check session here, not just in middleware — server component must validate ownership
   const session = await getServerSession(authOptions);
   if (!session) redirect('/api/auth/signin');
 
@@ -30,6 +28,7 @@ export default async function MessagePage({
 
   let msg;
   try {
+    // Pass username so mail-store enforces ownership — 403 if wrong user
     msg = await fetchMessage(params.id, username);
   } catch (err) {
     if (err instanceof MailStoreError && (err.status === 403 || err.status === 404)) {
@@ -38,6 +37,8 @@ export default async function MessagePage({
     throw err;
   }
 
+  // Sanitize server-side with an allowlist tuned for HTML email.
+  // sanitize-html is pure Node — no jsdom, no ESM conflicts.
   const safeHtml = msg.html_body
     ? sanitizeHtml(msg.html_body, {
         allowedTags: sanitizeHtml.defaults.allowedTags.concat([
@@ -59,6 +60,7 @@ export default async function MessagePage({
           'font': ['color', 'size', 'face'],
         },
         allowedSchemes: ['http', 'https', 'mailto', 'cid'],
+        // Force target="_blank" rel on all links to prevent tab hijacking
         transformTags: {
           a: (_tagName, attribs) => ({
             tagName: 'a',
@@ -82,19 +84,6 @@ export default async function MessagePage({
             <ArrowLeft size={15} strokeWidth={1.75} />
             Back
           </Link>
-          <div className="flex-1" />
-          {/* Action buttons */}
-          <div className="flex items-center gap-1">
-            <button className="p-1.5 rounded-card text-ink-soft hover:bg-rule hover:text-ink transition-colors" title="Star">
-              <Star size={15} strokeWidth={1.75} />
-            </button>
-            <button className="p-1.5 rounded-card text-ink-soft hover:bg-rule hover:text-ink transition-colors" title="Delete">
-              <Trash2 size={15} strokeWidth={1.75} />
-            </button>
-            <button className="p-1.5 rounded-card text-ink-soft hover:bg-rule hover:text-ink transition-colors" title="More">
-              <MoreHorizontal size={15} strokeWidth={1.75} />
-            </button>
-          </div>
         </div>
 
         {/* Message content */}
@@ -173,6 +162,12 @@ export default async function MessagePage({
               >
                 <Forward size={14} strokeWidth={2} />
                 Forward
+              </Link>
+              <Link
+                href={`/inbox?mailbox=${mailbox}`}
+                className="ml-auto px-4 py-2 text-sm font-sans text-ink-soft hover:text-ink transition-colors"
+              >
+                Back
               </Link>
             </div>
           </div>
