@@ -15,6 +15,13 @@ export interface MailMessage {
   mailbox: string;
 }
 
+export interface MessageState {
+  is_read: boolean;
+  is_starred: boolean;
+}
+
+export type StateMap = Record<string, MessageState>;
+
 export interface MessagesResponse {
   messages: Omit<MailMessage, 'text_body' | 'html_body'>[];
   total: number;
@@ -69,6 +76,35 @@ export async function fetchMessages(
 
 export async function fetchMessage(id: string | number, viewerUser: string): Promise<MailMessage> {
   const resp = await callStoreAs(`/messages/${encodeURIComponent(String(id))}`, viewerUser);
+  if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchMessageStates(ids: number[], viewerUser: string): Promise<StateMap> {
+  if (!ids.length) return {};
+  const qs = `?ids=${ids.join(',')}`;
+  const resp = await callStoreAs(`/messages/state${qs}`, viewerUser);
+  if (!resp.ok) return {};
+  return resp.json();
+}
+
+export async function patchMessageState(
+  id: number,
+  patch: Partial<MessageState>,
+  viewerUser: string
+): Promise<MessageState> {
+  const url = `${STORE_URL}/messages/${id}/state`;
+  const token = mintViewerToken(viewerUser);
+  const resp = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${VIEWER_SECRET}`,
+      'X-Viewer-User': token,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(patch),
+    cache: 'no-store',
+  });
   if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
   return resp.json();
 }

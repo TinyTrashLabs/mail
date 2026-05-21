@@ -15,3 +15,16 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_mailbox_date
   ON messages (mailbox, received_at DESC);
+
+-- Per-user message state: read/starred flags keyed on (viewer_username, message_id)
+CREATE TABLE IF NOT EXISTS message_state (
+  username   VARCHAR(64) NOT NULL,
+  message_id BIGINT      NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  is_read    BOOLEAN     NOT NULL DEFAULT FALSE,
+  is_starred BOOLEAN     NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (username, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_state_username
+  ON message_state (username);
