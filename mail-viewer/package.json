@@ -7,7 +7,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:unit": "jest",
+    "test:e2e": "playwright test",
+    "test": "pnpm test:unit"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",
@@ -20,14 +23,18 @@
     "swr": "^2.2.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/typography": "^0.5.13",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/sanitize-html": "^2.16.1",
     "autoprefixer": "^10.4.19",
+    "jest": "^30.4.2",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
+    "ts-jest": "^29.4.10",
     "typescript": "^5"
   }
 }
