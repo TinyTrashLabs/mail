@@ -58,24 +58,30 @@ router.patch('/messages/:id/state', async (req, res) => {
       return res.status(404).json({ error: 'not found' });
     }
 
-    // Build dynamic upsert — only update supplied fields
-    const sets = [];
+    // Build upsert with explicit positional params — never use indexOf on booleans.
+    // values[0]=username ($1), values[1]=id ($2), then optional is_read ($3?), is_starred ($4/$3?)
     const values = [viewerUser, id];
+    const sets = [];
+
+    let readParam = 'FALSE';
     if (is_read !== undefined) {
-      sets.push(`is_read = $${values.length + 1}`);
       values.push(is_read);
+      readParam = `$${values.length}`;
+      sets.push(`is_read = ${readParam}`);
     }
+
+    let starredParam = 'FALSE';
     if (is_starred !== undefined) {
-      sets.push(`is_starred = $${values.length + 1}`);
       values.push(is_starred);
+      starredParam = `$${values.length}`;
+      sets.push(`is_starred = ${starredParam}`);
     }
+
     sets.push('updated_at = NOW()');
 
     const result = await pool.query(
       `INSERT INTO message_state (username, message_id, is_read, is_starred)
-         VALUES ($1, $2,
-           ${is_read !== undefined ? `$${values.indexOf(is_read) + 1}` : 'FALSE'},
-           ${is_starred !== undefined ? `$${values.indexOf(is_starred) + 1}` : 'FALSE'})
+         VALUES ($1, $2, ${readParam}, ${starredParam})
        ON CONFLICT (username, message_id) DO UPDATE
          SET ${sets.join(', ')}
        RETURNING is_read, is_starred`,

@@ -9,7 +9,7 @@
  *  - Thread grouping by normalized subject
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Paperclip, Star, Search, X, HelpCircle } from 'lucide-react';
 
@@ -321,10 +321,10 @@ export function InboxClient({
                 ['Esc', 'Clear focus / close'],
                 ['?', 'Toggle this help'],
               ].map(([key, desc]) => (
-                <>
-                  <dt key={`k-${key}`} className="font-mono text-teal-strong font-medium">{key}</dt>
-                  <dd key={`d-${key}`} className="text-ink-soft">{desc}</dd>
-                </>
+                <Fragment key={key}>
+                  <dt className="font-mono text-teal-strong font-medium">{key}</dt>
+                  <dd className="text-ink-soft">{desc}</dd>
+                </Fragment>
               ))}
             </dl>
           </div>

@@ -64,7 +64,8 @@ export function MessageActions({
           toggleStar();
           break;
         case 'u':
-        case 'Backspace':
+          // 'u' = back to inbox (Gmail convention); Backspace omitted — too
+          // easy to trigger accidentally when user thinks focus is elsewhere
           router.push(backHref);
           break;
       }

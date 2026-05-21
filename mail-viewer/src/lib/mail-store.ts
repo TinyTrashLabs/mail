@@ -84,7 +84,10 @@ export async function fetchMessageStates(ids: number[], viewerUser: string): Pro
   if (!ids.length) return {};
   const qs = `?ids=${ids.join(',')}`;
   const resp = await callStoreAs(`/messages/state${qs}`, viewerUser);
-  if (!resp.ok) return {};
+  if (!resp.ok) {
+    console.error(`fetchMessageStates: mail-store returned ${resp.status}`);
+    return {};
+  }
   return resp.json();
 }
 
