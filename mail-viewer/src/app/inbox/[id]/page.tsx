@@ -1,11 +1,12 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { fetchMessage, MailStoreError } from '@/lib/mail-store';
+import { fetchMessage, fetchMessageStates, MailStoreError } from '@/lib/mail-store';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import sanitizeHtml from 'sanitize-html';
 import { Sidebar } from '@/components/Sidebar';
 import { AISummary } from '@/components/AISummary';
+import { MessageActions } from '@/components/MessageActions';
 import { stripHtml } from '@/lib/ai-utils';
 import {
   ArrowLeft,
@@ -75,20 +76,37 @@ export default async function MessagePage({
   // Plain text body for AI summary (prefer text_body, fall back to stripped HTML)
   const bodyForAI = msg.text_body || (safeHtml ? stripHtml(safeHtml) : '');
 
+  // Fetch initial star state (best-effort — falls back to unstarred)
+  const stateMap = username
+    ? await fetchMessageStates([msg.id], username).catch((): import('@/lib/mail-store').StateMap => ({}))
+    : ({} as import('@/lib/mail-store').StateMap);
+  const initialStarred = stateMap[String(msg.id)]?.is_starred ?? false;
+  const initialRead = stateMap[String(msg.id)]?.is_read ?? false;
+
+  const replyHref = `/compose?replyTo=${encodeURIComponent(msg.from_addr)}&subject=${encodeURIComponent(`Re: ${msg.subject}`)}&inReplyTo=${encodeURIComponent(msg.message_id || '')}`;
+  const backHref = `/inbox?mailbox=${mailbox}`;
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar username={username} mailbox={mailbox} />
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-rule bg-cream flex-shrink-0">
+        <div className="flex items-center gap-2 px-6 py-3 border-b border-rule bg-cream flex-shrink-0">
           <Link
-            href={`/inbox?mailbox=${mailbox}`}
-            className="flex items-center gap-1.5 text-sm font-sans text-ink-soft hover:text-ink transition-colors"
+            href={backHref}
+            className="flex items-center gap-1.5 text-sm font-sans text-ink-soft hover:text-ink transition-colors mr-2"
           >
             <ArrowLeft size={15} strokeWidth={1.75} />
             Back
           </Link>
+          <MessageActions
+            messageId={msg.id}
+            initialStarred={initialStarred}
+            initialRead={initialRead}
+            replyHref={replyHref}
+            backHref={backHref}
+          />
         </div>
 
         {/* Message content */}
@@ -165,7 +183,7 @@ export default async function MessagePage({
             {/* Reply/Forward actions */}
             <div className="mt-8 pt-6 border-t border-rule flex gap-3">
               <Link
-                href={`/compose?replyTo=${encodeURIComponent(msg.from_addr)}&subject=${encodeURIComponent(`Re: ${msg.subject}`)}&inReplyTo=${encodeURIComponent(msg.message_id || '')}`}
+                href={replyHref}
                 className="flex items-center gap-2 px-4 py-2 bg-teal hover:bg-teal-strong text-cream rounded-card text-sm font-sans font-medium transition-colors"
               >
                 <Reply size={14} strokeWidth={2} />
@@ -179,7 +197,7 @@ export default async function MessagePage({
                 Forward
               </Link>
               <Link
-                href={`/inbox?mailbox=${mailbox}`}
+                href={backHref}
                 className="ml-auto px-4 py-2 text-sm font-sans text-ink-soft hover:text-ink transition-colors"
               >
                 Back
