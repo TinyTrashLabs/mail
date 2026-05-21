@@ -26,11 +26,13 @@ function resolveViewerUser(req, res) {
 }
 
 /**
- * PATCH /messages/:id/state
+ * PATCH /message-states/:id
  * Body: { is_read?: boolean, is_starred?: boolean }
  * Upserts per-user message state. Returns the updated state row.
+ * Route uses /message-states (not /messages/:id/state) to avoid any
+ * ordering dependency with messagesRouter's /messages/:id GET route.
  */
-router.patch('/messages/:id/state', async (req, res) => {
+router.patch('/message-states/:id', async (req, res) => {
   if (!checkAuth(req, res)) return;
   const viewerUser = resolveViewerUser(req, res);
   if (viewerUser === null) return;
@@ -96,11 +98,11 @@ router.patch('/messages/:id/state', async (req, res) => {
 });
 
 /**
- * GET /messages/state?ids=1,2,3
+ * GET /message-states?ids=1,2,3
  * Returns state rows for the requested message ids for the viewer user.
  * Missing rows (never updated) are returned with defaults is_read=false, is_starred=false.
  */
-router.get('/messages/state', async (req, res) => {
+router.get('/message-states', async (req, res) => {
   if (!checkAuth(req, res)) return;
   const viewerUser = resolveViewerUser(req, res);
   if (viewerUser === null) return;

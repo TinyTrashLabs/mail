@@ -142,27 +142,28 @@ export function InboxClient({
 
   const patchState = useCallback(
     async (id: number, patch: Partial<MessageState>) => {
+      // Capture pre-call value before optimistic update so we can revert to it
+      const preCallState = states[String(id)] ?? { is_read: false, is_starred: false };
+
       // Optimistic update
       setStates((prev) => ({
         ...prev,
         [String(id)]: { ...(prev[String(id)] ?? { is_read: false, is_starred: false }), ...patch },
       }));
+
       try {
-        await fetch(`/api/messages/${id}/state`, {
+        await fetch(`/api/message-states/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(patch),
         });
       } catch {
-        // Revert on network error (best-effort)
-        setStates((prev) => {
-          const next = { ...prev };
-          delete next[String(id)];
-          return { ...next, [String(id)]: initialStates[String(id)] ?? { is_read: false, is_starred: false } };
-        });
+        // Revert to pre-call value on network error (not initialStates, which
+        // may be stale if other successful patches already updated this message)
+        setStates((prev) => ({ ...prev, [String(id)]: preCallState }));
       }
     },
-    [initialStates]
+    [states]
   );
 
   const toggleStar = useCallback(

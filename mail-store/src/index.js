@@ -10,10 +10,9 @@ app.use(express.json({ limit: '20mb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/', ingestRouter);
-// stateRouter defines GET /messages/state (batch) and PATCH /messages/:id/state.
-// messagesRouter defines GET /messages and GET /messages/:id.
-// Mounting stateRouter first ensures GET /messages/state is matched before
-// GET /messages/:id can capture it with id='state'.
+// stateRouter defines GET /message-states and PATCH /message-states/:id.
+// Using a distinct top-level path avoids any ordering dependency with
+// messagesRouter's /messages/:id GET route.
 app.use('/', stateRouter);
 app.use('/', messagesRouter);
 

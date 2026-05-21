@@ -33,7 +33,7 @@ export function MessageActions({
   // Auto-mark read on mount — skip if already read to avoid unnecessary PATCH
   useEffect(() => {
     if (initialRead) return;
-    fetch(`/api/messages/${messageId}/state`, {
+    fetch(`/api/message-states/${messageId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_read: true }),
@@ -44,7 +44,7 @@ export function MessageActions({
     const next = !starred;
     setStarred(next);
     try {
-      await fetch(`/api/messages/${messageId}/state`, {
+      await fetch(`/api/message-states/${messageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_starred: next }),

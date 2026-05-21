@@ -83,7 +83,7 @@ export async function fetchMessage(id: string | number, viewerUser: string): Pro
 export async function fetchMessageStates(ids: number[], viewerUser: string): Promise<StateMap> {
   if (!ids.length) return {};
   const qs = `?ids=${ids.join(',')}`;
-  const resp = await callStoreAs(`/messages/state${qs}`, viewerUser);
+  const resp = await callStoreAs(`/message-states${qs}`, viewerUser);
   if (!resp.ok) {
     console.error(`fetchMessageStates: mail-store returned ${resp.status}`);
     return {};
@@ -96,7 +96,7 @@ export async function patchMessageState(
   patch: Partial<MessageState>,
   viewerUser: string
 ): Promise<MessageState> {
-  const url = `${STORE_URL}/messages/${id}/state`;
+  const url = `${STORE_URL}/message-states/${id}`;
   const token = mintViewerToken(viewerUser);
   const resp = await fetch(url, {
     method: 'PATCH',
