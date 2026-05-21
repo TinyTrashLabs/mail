@@ -145,17 +145,20 @@ export default async function MessagePage({
               </dl>
             </div>
 
-            {/* Body */}
+            {/* Body — prefer rich HTML when present (multipart/alternative),
+                fall back to text_body, then to "no body content" placeholder.
+                Modern mail clients (Gmail, Outlook, Thunderbird) all default to
+                the HTML alternative; the text part is the legacy fallback. */}
             <div className="border-t border-rule pt-6">
-              {msg.text_body ? (
-                <pre className="whitespace-pre-wrap font-mono text-sm text-ink leading-relaxed">
-                  {msg.text_body}
-                </pre>
-              ) : safeHtml ? (
+              {safeHtml ? (
                 <div
                   className="prose max-w-none text-sm"
                   dangerouslySetInnerHTML={{ __html: safeHtml }}
                 />
+              ) : msg.text_body ? (
+                <pre className="whitespace-pre-wrap font-mono text-sm text-ink leading-relaxed">
+                  {msg.text_body}
+                </pre>
               ) : (
                 <p className="text-ink-soft italic text-sm font-sans">No body content.</p>
               )}
