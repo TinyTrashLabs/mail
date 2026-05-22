@@ -4,14 +4,14 @@ import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
 import { TagManagementClient } from '@/components/TagManagementClient';
 import { resolveMailbox } from '@/lib/mailbox';
+import { viewerHeaders } from '@/lib/mail-store';
 
 const STORE_URL = process.env.MAIL_STORE_URL!;
-const VIEWER_SECRET = process.env.VIEWER_SECRET!;
 
-async function fetchTagsForMailbox(mailbox: string): Promise<Array<{ tag: string; count: number }>> {
+async function fetchTagsForMailbox(mailbox: string, viewerUser: string): Promise<Array<{ tag: string; count: number }>> {
   try {
     const resp = await fetch(`${STORE_URL}/tags?mailbox=${encodeURIComponent(mailbox)}`, {
-      headers: { Authorization: `Bearer ${VIEWER_SECRET}` },
+      headers: viewerHeaders(viewerUser),
       cache: 'no-store',
     });
     if (!resp.ok) return [];
@@ -36,7 +36,7 @@ export default async function TagsPage({
   const mailbox = resolveMailbox(searchParams.mailbox, username);
   const fullName = (session as { user?: { name?: string } }).user?.name ?? username;
 
-  const tags = await fetchTagsForMailbox(mailbox);
+  const tags = await fetchTagsForMailbox(mailbox, username);
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
-import { canReadMessage, canWriteMessage, canWriteToMailbox } from '../access.js';
+import { canReadMessage, canWriteMessage, canWriteToMailbox, canAccessMailbox } from '../access.js';
 import { verifyViewerToken } from '../viewer-token.js';
 
 const router = Router();
@@ -198,7 +198,12 @@ router.delete('/tags', async (req, res) => {
 // GET /tags?mailbox=shared
 router.get('/tags', async (req, res) => {
   if (!checkAuth(req, res)) return;
+  const viewerUser = resolveViewerUser(req, res);
+  if (viewerUser === null) return;
   const mailbox = req.query.mailbox || 'shared';
+  if (!canAccessMailbox(mailbox, viewerUser)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
   try {
     const { rows } = await pool.query(
       `SELECT mt.tag, COUNT(*) as count

@@ -40,11 +40,20 @@ export class MailStoreError extends Error {
   }
 }
 
-function mintViewerToken(user: string): string {
+export function mintViewerToken(user: string): string {
   const payload = { user, exp: Math.floor(Date.now() / 1000) + TTL_SECONDS };
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = crypto.createHmac('sha256', VIEWER_SECRET).update(payloadB64).digest('base64url');
   return `${payloadB64}.${sig}`;
+}
+
+export function viewerHeaders(user: string, contentType?: string): HeadersInit {
+  const h: Record<string, string> = {
+    Authorization: `Bearer ${VIEWER_SECRET}`,
+    'X-Viewer-User': mintViewerToken(user),
+  };
+  if (contentType) h['Content-Type'] = contentType;
+  return h;
 }
 
 async function callStoreAs(path: string, viewerUser: string): Promise<Response> {
