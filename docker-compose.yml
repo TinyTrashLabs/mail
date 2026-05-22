@@ -58,8 +58,11 @@ services:
     # runs as user `nextjs` (uid 1001), so we mount the volume at that user's
     # ~/.claude — @anthropic-ai/claude-agent-sdk's query() resolves credentials
     # from os.homedir()/.claude/.credentials.json, no API key needed.
+    # Mounted RW (not RO) because the agent SDK refreshes the OAuth token
+    # in-place and would silently fail otherwise. The personas stack mounts
+    # this same volume RW; this just matches that contract.
     volumes:
-      - claude-creds:/home/nextjs/.claude:ro
+      - claude-creds:/home/nextjs/.claude
     ports:
       - "3026:3000"
 
