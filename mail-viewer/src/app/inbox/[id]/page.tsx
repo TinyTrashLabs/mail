@@ -27,7 +27,7 @@ export default async function MessagePage({
   if (!session) redirect('/api/auth/signin');
 
   const username = (session as { username?: string }).username ?? '';
-  const mailbox = searchParams.mailbox || 'shared';
+  const mailbox = searchParams.mailbox || username || 'shared';
 
   let msg;
   try {
