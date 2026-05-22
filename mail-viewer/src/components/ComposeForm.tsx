@@ -182,6 +182,7 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
             <div className="flex items-center border-b border-rule">
               <label className="px-4 py-3 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">To</label>
               <input value={to} onChange={e => setTo(e.target.value)}
+                type="email"
                 className="flex-1 bg-transparent px-3 py-3 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                 placeholder="recipient@example.com" autoFocus={!to} />
               <button onClick={() => setShowCcBcc(v => !v)}
@@ -196,12 +197,14 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
                 <div className="flex items-center border-b border-rule">
                   <label className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">CC</label>
                   <input value={cc} onChange={e => setCc(e.target.value)}
+                    type="email"
                     className="flex-1 bg-transparent px-3 py-2.5 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                     placeholder="cc@example.com" />
                 </div>
                 <div className="flex items-center border-b border-rule">
                   <label className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">BCC</label>
                   <input value={bcc} onChange={e => setBcc(e.target.value)}
+                    type="email"
                     className="flex-1 bg-transparent px-3 py-2.5 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                     placeholder="bcc@example.com" />
                 </div>
@@ -270,10 +273,16 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
           {/* Actions */}
           <div className="flex items-center gap-3">
             <button onClick={send} disabled={sending || !to || !subject}
-              className="flex items-center gap-2 px-5 py-2 bg-teal hover:bg-teal-strong disabled:opacity-50 text-cream rounded-card text-sm font-sans font-medium transition-colors">
+              title={!to ? 'Add a recipient to send' : !subject ? 'Add a subject to send' : 'Send message'}
+              className="flex items-center gap-2 px-5 py-2 min-h-[40px] bg-teal hover:bg-teal-strong disabled:opacity-50 disabled:cursor-not-allowed text-cream rounded-card text-sm font-sans font-medium transition-colors">
               <Send size={13} strokeWidth={2} />
               {sending ? 'Sending…' : 'Send'}
             </button>
+            {(!to || !subject) && !sending && (
+              <span className="text-xs font-sans text-ink-soft/70">
+                {!to ? '— add a recipient first' : '— add a subject first'}
+              </span>
+            )}
             {/* Attach file */}
             <button type="button" onClick={() => fileRef.current?.click()}
               className="flex items-center gap-1.5 px-3 py-2 border border-rule rounded-card text-sm font-sans text-ink-soft hover:text-ink hover:bg-rule transition-colors">
