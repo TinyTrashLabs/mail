@@ -1,5 +1,3 @@
-import { PERSONAL } from './mailbox.js';
-
 /**
  * Pure access-control predicates. Exported so route handlers AND tests
  * import the same function — no risk of tests drifting from production logic.
@@ -8,14 +6,14 @@ import { PERSONAL } from './mailbox.js';
 export function canAccessMailbox(requestedMailbox, viewerUser) {
   return (
     requestedMailbox === 'shared' ||
-    (PERSONAL.has(requestedMailbox) && requestedMailbox === viewerUser)
+    requestedMailbox === viewerUser
   );
 }
 
 export function canReadMessage(msgMailbox, viewerUser) {
   return (
     msgMailbox === 'shared' ||
-    (PERSONAL.has(msgMailbox) && msgMailbox === viewerUser)
+    msgMailbox === viewerUser
   );
 }
 
