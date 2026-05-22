@@ -54,12 +54,8 @@ export function TagManagementClient({
     if (to === editing) { cancelEdit(); return; }
     setBusy(true); setError(null);
     const prev = tags;
-    // Optimistic: merge if 'to' already exists (combine counts), else just rename
-    const target = tags.find(t => t.tag === to);
-    const renamed = tags
-      .map(t => t.tag === editing ? { ...t, tag: to, count: target ? target.count + t.count : t.count } : t)
-      .filter(t => !(target && t.tag === to && t.count === target.count && tags.find(x => x.tag === editing)?.tag === editing) ? true : false);
-    // Simpler: rebuild
+    // Optimistic update: rebuild the list with the rename applied,
+    // merging counts when 'to' already exists.
     const next: TagRow[] = [];
     const oldCount = tags.find(t => t.tag === editing)?.count ?? 0;
     let merged = false;
@@ -91,7 +87,6 @@ export function TagManagementClient({
     } finally {
       setBusy(false);
     }
-    void renamed;
   }, [editing, draftName, tags, mailbox, cancelEdit, router]);
 
   const deleteTag = useCallback(async (tag: string) => {

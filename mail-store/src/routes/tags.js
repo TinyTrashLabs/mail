@@ -124,7 +124,7 @@ router.patch('/tags', async (req, res) => {
   const viewerUser = resolveViewerUser(req, res);
   if (viewerUser === null) return;
 
-  const mailbox = req.query.mailbox || 'shared';
+  const mailbox = typeof req.query.mailbox === 'string' && req.query.mailbox ? req.query.mailbox : 'shared';
   if (!canWriteToMailbox(mailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }
@@ -173,7 +173,7 @@ router.delete('/tags', async (req, res) => {
   const viewerUser = resolveViewerUser(req, res);
   if (viewerUser === null) return;
 
-  const mailbox = req.query.mailbox || 'shared';
+  const mailbox = typeof req.query.mailbox === 'string' && req.query.mailbox ? req.query.mailbox : 'shared';
   if (!canWriteToMailbox(mailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }
@@ -200,7 +200,7 @@ router.get('/tags', async (req, res) => {
   if (!checkAuth(req, res)) return;
   const viewerUser = resolveViewerUser(req, res);
   if (viewerUser === null) return;
-  const mailbox = req.query.mailbox || 'shared';
+  const mailbox = typeof req.query.mailbox === 'string' && req.query.mailbox ? req.query.mailbox : 'shared';
   if (!canAccessMailbox(mailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }

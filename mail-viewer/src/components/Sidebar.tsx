@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Inbox, PenSquare, Users, Tag, Settings, Keyboard, LogOut } from 'lucide-react';
+import { Inbox, PenSquare, Users, Tag, LogOut } from 'lucide-react';
 
 interface SidebarProps {
   username: string;
@@ -60,7 +60,7 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag }: Sidebar
 
       {/* Compose */}
       <div className="px-3 pt-3 pb-2">
-        <Link href={`/inbox?mailbox=${mailbox}&compose=1`}
+        <Link href="/compose"
           className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-teal hover:bg-teal-strong text-cream rounded-card text-sm font-sans font-medium transition-colors">
           <PenSquare size={14} strokeWidth={2} />
           Compose
@@ -110,17 +110,6 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag }: Sidebar
 
       {/* Footer */}
       <div className="border-t border-rule px-2 py-2 space-y-0.5">
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent('mail:open-shortcuts'))}
-          className="flex items-center gap-2.5 px-3 py-1.5 rounded-card text-xs font-sans text-ink-soft hover:bg-rule hover:text-ink transition-colors w-full">
-          <Keyboard size={12} strokeWidth={1.75} />
-          Shortcuts
-        </button>
-        <Link href={`/inbox/tags?mailbox=${mailbox}`}
-          className="flex items-center gap-2.5 px-3 py-1.5 rounded-card text-xs font-sans text-ink-soft hover:bg-rule hover:text-ink transition-colors w-full">
-          <Settings size={12} strokeWidth={1.75} />
-          Tag settings
-        </Link>
         <Link href="/api/auth/signout"
           className="flex items-center gap-2.5 px-3 py-1.5 rounded-card text-xs font-sans text-ink-soft hover:bg-rule hover:text-ink transition-colors w-full">
           <LogOut size={12} strokeWidth={1.75} />
