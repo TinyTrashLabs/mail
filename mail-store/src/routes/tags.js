@@ -5,6 +5,8 @@ import { verifyViewerToken } from '../viewer-token.js';
 
 const router = Router();
 
+const TAG_RE = /^[a-z][a-z0-9-]{0,31}$/;
+
 function checkAuth(req, res) {
   const auth = req.headers.authorization || '';
   if (auth !== `Bearer ${process.env.VIEWER_SECRET}`) {
@@ -103,7 +105,7 @@ router.delete('/messages/:id/tags/:tag', async (req, res) => {
   const id = parseInt(req.params.id);
   if (!id) return res.status(400).json({ error: 'invalid id' });
   const tag = String(req.params.tag || '').toLowerCase().trim();
-  if (!tag || tag.length > 32) return res.status(400).json({ error: 'invalid tag' });
+  if (!TAG_RE.test(tag)) return res.status(400).json({ error: 'invalid tag' });
 
   try {
     const { rows } = await pool.query('SELECT mailbox FROM messages WHERE id = $1', [id]);
@@ -131,7 +133,7 @@ router.patch('/tags', async (req, res) => {
 
   const from = String(req.body?.from || '').toLowerCase().trim();
   const to = String(req.body?.to || '').toLowerCase().trim();
-  if (!from || !to || from.length > 32 || to.length > 32) {
+  if (!TAG_RE.test(from) || !TAG_RE.test(to)) {
     return res.status(400).json({ error: 'invalid from/to' });
   }
   if (from === to) return res.json({ ok: true, renamed: 0 });
@@ -178,8 +180,8 @@ router.delete('/tags', async (req, res) => {
     return res.status(403).json({ error: 'forbidden' });
   }
 
-  const tag = String(req.query.tag || '').toLowerCase().trim();
-  if (!tag) return res.status(400).json({ error: 'tag required' });
+  const tag = typeof req.query.tag === 'string' ? req.query.tag.toLowerCase().trim() : '';
+  if (!TAG_RE.test(tag)) return res.status(400).json({ error: 'invalid tag' });
 
   try {
     const result = await pool.query(

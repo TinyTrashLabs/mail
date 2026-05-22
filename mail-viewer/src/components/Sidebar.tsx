@@ -91,7 +91,7 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag }: Sidebar
             <Tag size={12} strokeWidth={1.75} className="text-ink-soft" />
             <span className="text-xs font-sans font-semibold text-ink-soft uppercase tracking-wide">Tags</span>
           </div>
-          <Link href={`/inbox/tags?mailbox=${mailbox}`} className="text-[10px] text-ink-soft hover:text-ink font-sans" title="Manage tags">manage</Link>
+          <Link href={`/inbox/tags?mailbox=${encodeURIComponent(mailbox)}`} className="text-[10px] text-ink-soft hover:text-ink font-sans" title="Manage tags">manage</Link>
         </div>
         {tags.length === 0 ? (
           <div className="px-3 py-1 text-[11px] font-sans text-ink-soft/60 italic">No tags yet</div>

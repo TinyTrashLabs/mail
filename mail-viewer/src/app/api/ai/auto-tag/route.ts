@@ -37,7 +37,10 @@ export async function POST(req: NextRequest) {
   const client = getAIClient();
   if (!client) return NextResponse.json({ error: 'AI not configured' }, { status: 503 });
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'invalid body' }, { status: 400 });
+  }
   const subject: string = typeof body.subject === 'string' ? body.subject.slice(0, 500) : '';
   const from: string = typeof body.from === 'string' ? body.from.slice(0, 200) : '';
   const rawBody: string = typeof body.body === 'string' ? body.body : '';
