@@ -1,17 +1,21 @@
 'use client';
 
 /**
- * InboxClient — interactive inbox list with:
- *  - Read/unread state (bold unread, dim read)
- *  - Star toggle
- *  - Native text search/filter (client-side, current page)
- *  - Keyboard shortcuts: j/k navigate, Enter open, r reply, s star, / search focus, ? help
- *  - Thread grouping by normalized subject
+ * InboxClient — Gmail-style two-pane layout.
+ * Left: message list. Right: reading pane (loaded via ?msg=<id> URL state).
+ * Keyboard: j/k navigate, Enter open in pane, o open full page, s star,
+ *           r reply, / search, ? help, Escape close pane.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Paperclip, Star, Search, X, HelpCircle } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  Paperclip, Star, Search, X, HelpCircle, Reply, Forward,
+  Tag, ArrowLeft, ExternalLink,
+} from 'lucide-react';
+import { AISummary } from '@/components/AISummary';
+import { MessageActions } from '@/components/MessageActions';
 
 interface Message {
   id: number;
@@ -19,6 +23,17 @@ interface Message {
   from_addr: string;
   received_at: string;
   attachments_meta?: { filename: string; contentType: string; size: number }[];
+  tags?: string[];
+}
+
+interface FullMessage extends Message {
+  message_id: string | null;
+  in_reply_to: string | null;
+  to_addrs: { name: string; address: string }[];
+  cc_addrs: { name: string; address: string }[];
+  text_body: string | null;
+  html_body: string | null;
+  mailbox: string;
 }
 
 interface MessageState {
@@ -33,6 +48,12 @@ interface InboxClientProps {
   total: number;
   page: number;
   totalPages: number;
+  tag?: string;
+  selectedMsgId: number | null;
+  selectedMsg: FullMessage | null;
+  selectedSafeHtml: string | null;
+  bodyForAI: string;
+  username: string;
 }
 
 function formatDate(iso: string) {
@@ -53,38 +74,32 @@ function avatarInitial(from: string) {
 }
 
 function avatarColor(from: string): string {
-  const colors = [
-    'bg-teal-strong',
-    'bg-[#6db28b]',
-    'bg-[#d8a14a]',
-    'bg-[#7b8bb3]',
-    'bg-[#b37b9e]',
-  ];
+  const colors = ['bg-teal-strong', 'bg-[#6db28b]', 'bg-[#d8a14a]', 'bg-[#7b8bb3]', 'bg-[#b37b9e]'];
   let h = 0;
   for (let i = 0; i < from.length; i++) h = (h * 31 + from.charCodeAt(i)) >>> 0;
   return colors[h % colors.length];
 }
 
-/** Normalize subject for thread grouping: strip Re:/Fwd: prefixes, lowercase */
-function normalizeSubject(subject: string): string {
-  return subject
-    .replace(/^(re|fwd?|fw):\s*/gi, '')
-    .trim()
-    .toLowerCase();
+function normalizeSubject(s: string) {
+  return s.replace(/^(re|fwd?|fw):\s*/gi, '').trim().toLowerCase();
 }
-
-/**
- * Thread key: normalized subject + sender domain.
- * Using sender domain (not full address) groups replies from multiple
- * addresses at the same domain while preventing false grouping of
- * unrelated messages that happen to share a common subject like "Hello".
- */
-function threadKey(msg: { subject: string; from_addr: string }): string {
+function threadKey(msg: { subject: string; from_addr: string }) {
   const domain = msg.from_addr.split('@')[1]?.toLowerCase() ?? msg.from_addr.toLowerCase();
   return `${normalizeSubject(msg.subject)}|${domain}`;
 }
 
 type ViewMode = 'all' | 'unread' | 'starred';
+
+const TAG_COLORS: Record<string, string> = {
+  important: 'bg-[#d8a14a]/20 text-[#a07030]',
+  newsletter: 'bg-[#7b8bb3]/20 text-[#4a5a8a]',
+  notification: 'bg-[#6db28b]/20 text-[#3a7a5a]',
+  receipt: 'bg-[#b37b9e]/20 text-[#7a4a6a]',
+  action: 'bg-teal/20 text-teal-strong',
+};
+function tagColor(tag: string) {
+  return TAG_COLORS[tag] || 'bg-rule text-ink-soft';
+}
 
 export function InboxClient({
   messages,
@@ -93,121 +108,103 @@ export function InboxClient({
   total,
   page,
   totalPages,
+  tag: activeTag,
+  selectedMsgId,
+  selectedMsg,
+  selectedSafeHtml,
+  bodyForAI,
+  username,
 }: InboxClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
+
   const [states, setStates] = useState<Record<string, MessageState>>(initialStates);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [showHelp, setShowHelp] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState<number>(-1);
   const searchRef = useRef<HTMLInputElement>(null);
-  const rowRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const getState = useCallback(
-    (id: number): MessageState =>
-      states[String(id)] ?? { is_read: false, is_starred: false },
+    (id: number): MessageState => states[String(id)] ?? { is_read: false, is_starred: false },
     [states]
   );
 
-  // Filter messages
   const filtered = messages.filter((msg) => {
     if (viewMode === 'unread' && getState(msg.id).is_read) return false;
     if (viewMode === 'starred' && !getState(msg.id).is_starred) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return (
-        msg.subject.toLowerCase().includes(q) ||
-        msg.from_addr.toLowerCase().includes(q)
-      );
+      return msg.subject.toLowerCase().includes(q) || msg.from_addr.toLowerCase().includes(q);
     }
     return true;
   });
 
-  // Thread grouping: group by normalized subject + sender domain to avoid
-  // falsely threading unrelated messages that share a common subject.
-  const threaded: { msg: Message; threadCount: number; isThreadHead: boolean }[] = [];
-  const threadMap = new Map<string, number>(); // thread key → count
-  for (const msg of filtered) {
-    const key = threadKey(msg);
-    threadMap.set(key, (threadMap.get(key) ?? 0) + 1);
-  }
-  // Second pass — mark first occurrence of each thread key as head
+  const threadMap = new Map<string, number>();
+  for (const msg of filtered) threadMap.set(threadKey(msg), (threadMap.get(threadKey(msg)) ?? 0) + 1);
   const seenThreads = new Set<string>();
-  for (const msg of filtered) {
+  const threaded = filtered.map((msg) => {
     const key = threadKey(msg);
     const count = threadMap.get(key) ?? 1;
     const isHead = !seenThreads.has(key);
     if (isHead) seenThreads.add(key);
-    threaded.push({ msg, threadCount: count, isThreadHead: isHead });
-  }
+    return { msg, threadCount: count, isThreadHead: isHead };
+  });
 
-  const patchState = useCallback(
-    async (id: number, patch: Partial<MessageState>) => {
-      // Capture pre-call value before optimistic update so we can revert to it
-      const preCallState = states[String(id)] ?? { is_read: false, is_starred: false };
+  const openMessage = useCallback((id: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('msg', String(id));
+    startTransition(() => { router.push(`/inbox?${params.toString()}`, { scroll: false }); });
+    // Mark read optimistically
+    setStates(prev => ({
+      ...prev,
+      [String(id)]: { ...(prev[String(id)] ?? { is_read: false, is_starred: false }), is_read: true },
+    }));
+    fetch(`/api/message-states/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_read: true }),
+    }).catch(() => {});
+  }, [router, searchParams]);
 
-      // Optimistic update
-      setStates((prev) => ({
-        ...prev,
-        [String(id)]: { ...(prev[String(id)] ?? { is_read: false, is_starred: false }), ...patch },
-      }));
+  const closePane = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('msg');
+    startTransition(() => { router.push(`/inbox?${params.toString()}`, { scroll: false }); });
+  }, [router, searchParams]);
 
-      try {
-        await fetch(`/api/message-states/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(patch),
-        });
-      } catch {
-        // Revert to pre-call value on network error (not initialStates, which
-        // may be stale if other successful patches already updated this message)
-        setStates((prev) => ({ ...prev, [String(id)]: preCallState }));
-      }
-    },
-    [states]
-  );
+  const patchState = useCallback(async (id: number, patch: Partial<MessageState>) => {
+    const pre = states[String(id)] ?? { is_read: false, is_starred: false };
+    setStates(prev => ({ ...prev, [String(id)]: { ...pre, ...patch } }));
+    try {
+      await fetch(`/api/message-states/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+    } catch {
+      setStates(prev => ({ ...prev, [String(id)]: pre }));
+    }
+  }, [states]);
 
-  const toggleStar = useCallback(
-    (e: React.MouseEvent, id: number) => {
-      e.preventDefault();
-      e.stopPropagation();
-      patchState(id, { is_starred: !getState(id).is_starred });
-    },
-    [getState, patchState]
-  );
-
-  const markRead = useCallback(
-    (id: number) => {
-      if (!getState(id).is_read) {
-        patchState(id, { is_read: true });
-      }
-    },
-    [getState, patchState]
-  );
+  const toggleStar = useCallback((e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    patchState(id, { is_starred: !getState(id).is_starred });
+  }, [getState, patchState]);
 
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in input/textarea
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') {
-        if (e.key === 'Escape') {
-          setSearchQuery('');
-          (e.target as HTMLInputElement).blur();
-        }
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).contentEditable === 'true') {
+        if (e.key === 'Escape') { setSearchQuery(''); (e.target as HTMLInputElement).blur?.(); }
         return;
       }
-
       switch (e.key) {
-        case 'j':
-          setFocusedIdx((i) => Math.min(i + 1, threaded.length - 1));
-          break;
-        case 'k':
-          setFocusedIdx((i) => Math.max(i - 1, 0));
-          break;
+        case 'j': setFocusedIdx(i => Math.min(i + 1, threaded.length - 1)); break;
+        case 'k': setFocusedIdx(i => Math.max(i - 1, 0)); break;
         case 'Enter':
-          if (focusedIdx >= 0 && threaded[focusedIdx]) {
-            rowRefs.current[focusedIdx]?.click();
-          }
+          if (focusedIdx >= 0 && threaded[focusedIdx]) openMessage(threaded[focusedIdx].msg.id);
           break;
         case 's':
           if (focusedIdx >= 0 && threaded[focusedIdx]) {
@@ -215,226 +212,279 @@ export function InboxClient({
             patchState(msg.id, { is_starred: !getState(msg.id).is_starred });
           }
           break;
-        case '/':
-          e.preventDefault();
-          searchRef.current?.focus();
+        case 'r':
+          if (selectedMsg) {
+            router.push(`/compose?replyTo=${encodeURIComponent(selectedMsg.from_addr)}&subject=${encodeURIComponent(`Re: ${selectedMsg.subject}`)}&inReplyTo=${encodeURIComponent(selectedMsg.message_id || '')}`);
+          }
           break;
-        case '?':
-          setShowHelp((v) => !v);
-          break;
+        case '/': e.preventDefault(); searchRef.current?.focus(); break;
+        case '?': setShowHelp(v => !v); break;
         case 'Escape':
-          setShowHelp(false);
-          setFocusedIdx(-1);
+          if (selectedMsgId) closePane();
+          else { setShowHelp(false); setFocusedIdx(-1); }
           break;
       }
     };
-
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [focusedIdx, threaded, getState, patchState]);
+  }, [focusedIdx, threaded, getState, patchState, openMessage, closePane, selectedMsg, selectedMsgId, router]);
 
-  // Scroll focused row into view
   useEffect(() => {
-    if (focusedIdx >= 0) {
-      rowRefs.current[focusedIdx]?.scrollIntoView({ block: 'nearest' });
-    }
+    if (focusedIdx >= 0) rowRefs.current[focusedIdx]?.scrollIntoView({ block: 'nearest' });
   }, [focusedIdx]);
 
-  const unreadCount = messages.filter((m) => !getState(m.id).is_read).length;
+  const unreadCount = messages.filter(m => !getState(m.id).is_read).length;
+  const replyHref = selectedMsg
+    ? `/compose?replyTo=${encodeURIComponent(selectedMsg.from_addr)}&subject=${encodeURIComponent(`Re: ${selectedMsg.subject}`)}&inReplyTo=${encodeURIComponent(selectedMsg.message_id || '')}`
+    : '#';
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div className="px-6 pt-3 pb-2 border-b border-rule bg-cream flex-shrink-0 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-sm font-sans font-semibold text-ink capitalize">{mailbox}</h1>
-            {unreadCount > 0 && (
-              <span className="text-xs bg-teal text-cream rounded-full px-2 py-0.5 font-sans font-medium">
-                {unreadCount} unread
-              </span>
+    <div className="flex-1 flex overflow-hidden min-h-0">
+      {/* ── LEFT PANE: message list ── */}
+      <div className={`flex flex-col overflow-hidden border-r border-rule bg-cream transition-all duration-200 ${selectedMsgId ? 'w-80 flex-shrink-0' : 'flex-1'}`}>
+        {/* Toolbar */}
+        <div className="px-4 pt-3 pb-2 border-b border-rule flex-shrink-0 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-sans font-semibold text-ink capitalize">
+                {activeTag ? `#${activeTag}` : mailbox}
+              </h1>
+              {unreadCount > 0 && (
+                <span className="text-xs bg-teal text-cream rounded-full px-2 py-0.5 font-sans font-medium">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              {(['all', 'unread', 'starred'] as ViewMode[]).map(mode => (
+                <button key={mode} onClick={() => setViewMode(mode)}
+                  className={`text-xs px-2 py-1 rounded font-sans transition-colors capitalize ${viewMode === mode ? 'bg-teal text-cream font-medium' : 'text-ink-soft hover:text-ink'}`}>
+                  {mode}
+                </button>
+              ))}
+              <button onClick={() => setShowHelp(v => !v)} className="text-ink-soft hover:text-ink ml-1" title="?">
+                <HelpCircle size={14} strokeWidth={1.75} />
+              </button>
+            </div>
+          </div>
+          <div className="relative">
+            <Search size={12} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft pointer-events-none" />
+            <input ref={searchRef} type="text" placeholder="Filter… ( / )" value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 text-xs font-sans bg-[#f0ede4] border border-rule rounded text-ink placeholder:text-ink-soft focus:outline-none focus:border-teal" />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-soft hover:text-ink">
+                <X size={12} strokeWidth={2} />
+              </button>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {/* View mode tabs */}
-            {(['all', 'unread', 'starred'] as ViewMode[]).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={`text-xs px-2.5 py-1 rounded-card font-sans transition-colors capitalize ${
-                  viewMode === mode
-                    ? 'bg-teal text-cream font-medium'
-                    : 'text-ink-soft hover:text-ink hover:bg-rule'
-                }`}
-              >
-                {mode}
-              </button>
-            ))}
-            <button
-              onClick={() => setShowHelp((v) => !v)}
-              className="text-ink-soft hover:text-ink transition-colors ml-1"
-              title="Keyboard shortcuts (?)"
-            >
-              <HelpCircle size={15} strokeWidth={1.75} />
-            </button>
-          </div>
         </div>
 
-        {/* Search bar */}
-        <div className="relative">
-          <Search size={13} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft pointer-events-none" />
-          <input
-            ref={searchRef}
-            type="text"
-            placeholder="Filter messages… ( / )"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-8 py-1.5 text-sm font-sans bg-[#f0ede4] border border-rule rounded-card text-ink placeholder:text-ink-soft focus:outline-none focus:border-teal transition-colors"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-soft hover:text-ink"
-            >
-              <X size={13} strokeWidth={2} />
-            </button>
+        {/* Message rows */}
+        <div className="flex-1 overflow-y-auto divide-y divide-rule">
+          {filtered.length === 0 && (
+            <div className="p-8 text-ink-soft text-center text-sm font-sans">
+              {searchQuery ? 'No matches.' : 'No messages.'}
+            </div>
           )}
+          {threaded.map(({ msg, threadCount, isThreadHead }, idx) => {
+            const state = getState(msg.id);
+            const isFocused = focusedIdx === idx;
+            const isSelected = selectedMsgId === msg.id;
+            return (
+              <button key={msg.id}
+                ref={el => { rowRefs.current[idx] = el; }}
+                onClick={() => openMessage(msg.id)}
+                className={`w-full text-left flex items-start gap-2 px-3 py-2.5 transition-colors group ${isSelected ? 'bg-teal/10 border-l-2 border-teal' : isFocused ? 'bg-[#f0ede4]' : 'hover:bg-[#f0ede4]'}`}>
+                {/* Unread dot */}
+                <div className="flex-shrink-0 mt-1.5 w-1.5 h-1.5">
+                  {!state.is_read && <div className="w-1.5 h-1.5 rounded-full bg-teal-strong" />}
+                </div>
+                {/* Avatar */}
+                <div className={`w-7 h-7 rounded-full ${avatarColor(msg.from_addr)} flex items-center justify-center text-xs font-bold text-cream flex-shrink-0`}>
+                  {avatarInitial(msg.from_addr)}
+                </div>
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className={`text-xs truncate ${state.is_read ? 'text-ink-soft' : 'text-ink font-semibold'}`}>
+                      {msg.from_addr.split('@')[0]}
+                    </span>
+                    <span className="text-xs text-ink-soft flex-shrink-0">{formatDate(msg.received_at)}</span>
+                  </div>
+                  <div className={`text-xs truncate mt-0.5 ${state.is_read ? 'text-ink-soft' : 'text-ink'}`}>
+                    {msg.subject}
+                    {threadCount > 1 && isThreadHead && (
+                      <span className="ml-1 text-ink-soft">({threadCount})</span>
+                    )}
+                  </div>
+                  {/* Tags row */}
+                  {(msg.tags?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {msg.tags!.map(t => (
+                        <span key={t} className={`text-[10px] px-1.5 py-0.5 rounded font-sans ${tagColor(t)}`}>{t}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Icons */}
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <button onClick={e => toggleStar(e, msg.id)} className="focus:outline-none">
+                    <Star size={12} strokeWidth={1.5} className={state.is_starred ? 'fill-[#d8a14a] text-[#d8a14a]' : 'text-rule group-hover:text-ink-soft'} />
+                  </button>
+                  {(msg.attachments_meta?.length ?? 0) > 0 && (
+                    <Paperclip size={11} className="text-ink-soft" strokeWidth={1.75} />
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
-        {searchQuery && (
-          <p className="text-xs text-ink-soft font-sans">
-            {filtered.length} of {total} messages
-          </p>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center gap-3 px-4 py-2 border-t border-rule text-xs font-sans flex-shrink-0">
+            {page > 1 && (
+              <Link href={`/inbox?mailbox=${mailbox}&page=${page - 1}${activeTag ? `&tag=${activeTag}` : ''}`} className="text-teal-strong hover:underline">← Prev</Link>
+            )}
+            <span className="text-ink-soft">{page}/{totalPages}</span>
+            {page < totalPages && (
+              <Link href={`/inbox?mailbox=${mailbox}&page=${page + 1}${activeTag ? `&tag=${activeTag}` : ''}`} className="text-teal-strong hover:underline">Next →</Link>
+            )}
+          </div>
         )}
       </div>
 
+      {/* ── RIGHT PANE: reading pane ── */}
+      {selectedMsgId && selectedMsg ? (
+        <div className="flex-1 flex flex-col overflow-hidden bg-cream min-w-0">
+          {/* Pane toolbar */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-rule bg-cream flex-shrink-0">
+            <button onClick={closePane} className="flex items-center gap-1 text-xs font-sans text-ink-soft hover:text-ink transition-colors">
+              <ArrowLeft size={13} strokeWidth={1.75} />
+            </button>
+            <MessageActions
+              messageId={selectedMsg.id}
+              initialStarred={states[String(selectedMsg.id)]?.is_starred ?? false}
+              initialRead={states[String(selectedMsg.id)]?.is_read ?? true}
+              replyHref={replyHref}
+              backHref={`/inbox?mailbox=${mailbox}`}
+            />
+            <div className="flex-1" />
+            {/* Tags on selected message */}
+            {(selectedMsg.tags?.length ?? 0) > 0 && (
+              <div className="flex items-center gap-1">
+                <Tag size={12} strokeWidth={1.75} className="text-ink-soft" />
+                {selectedMsg.tags!.map(t => (
+                  <span key={t} className={`text-[10px] px-1.5 py-0.5 rounded font-sans ${tagColor(t)}`}>{t}</span>
+                ))}
+              </div>
+            )}
+            <Link href={`/inbox/${selectedMsg.id}?mailbox=${mailbox}`} className="text-ink-soft hover:text-ink transition-colors" title="Open full page">
+              <ExternalLink size={13} strokeWidth={1.75} />
+            </Link>
+          </div>
+
+          {/* Message content */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-3xl mx-auto px-6 py-6">
+              <h1 className="text-lg font-serif font-semibold text-ink mb-4 leading-snug">{selectedMsg.subject}</h1>
+
+              {bodyForAI && (
+                <AISummary messageId={selectedMsg.id} subject={selectedMsg.subject} from={selectedMsg.from_addr} body={bodyForAI} />
+              )}
+
+              {/* Header card */}
+              <div className="bg-[#f0ede4] rounded-card p-3 mb-4">
+                <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 text-xs font-sans">
+                  <dt className="font-medium text-ink-soft">From</dt>
+                  <dd className="text-ink break-all">{selectedMsg.from_addr}</dd>
+                  <dt className="font-medium text-ink-soft">To</dt>
+                  <dd className="text-ink break-all">{selectedMsg.to_addrs.map(a => a.address).join(', ')}</dd>
+                  {selectedMsg.cc_addrs.length > 0 && (
+                    <>
+                      <dt className="font-medium text-ink-soft">CC</dt>
+                      <dd className="text-ink break-all">{selectedMsg.cc_addrs.map(a => a.address).join(', ')}</dd>
+                    </>
+                  )}
+                  <dt className="font-medium text-ink-soft">Date</dt>
+                  <dd className="text-ink">{new Date(selectedMsg.received_at).toLocaleString()}</dd>
+                </dl>
+              </div>
+
+              {/* Body */}
+              <div className="border-t border-rule pt-4 text-sm">
+                {selectedSafeHtml ? (
+                  <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: selectedSafeHtml }} />
+                ) : selectedMsg.text_body ? (
+                  <pre className="whitespace-pre-wrap font-mono text-sm text-ink leading-relaxed">{selectedMsg.text_body}</pre>
+                ) : (
+                  <p className="text-ink-soft italic text-sm font-sans">No body content.</p>
+                )}
+              </div>
+
+              {/* Attachments */}
+              {(selectedMsg.attachments_meta?.length ?? 0) > 0 && (
+                <div className="mt-6 border-t border-rule pt-4">
+                  <div className="flex items-center gap-1.5 text-xs font-sans font-semibold text-ink-soft uppercase tracking-wider mb-2">
+                    <Paperclip size={11} strokeWidth={2} />
+                    Attachments ({(selectedMsg.attachments_meta?.length ?? 0)})
+                  </div>
+                  <ul className="space-y-1">
+                    {selectedMsg.attachments_meta?.map((a, i) => (
+                      <li key={i} className="flex items-center gap-2 text-xs font-sans">
+                        <Paperclip size={11} strokeWidth={1.75} className="text-ink-soft" />
+                        <span className="text-ink">{a.filename}</span>
+                        <span className="text-ink-soft">({a.contentType}, {a.size}b)</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Reply / Forward */}
+              <div className="mt-6 pt-4 border-t border-rule flex gap-2">
+                <Link href={replyHref}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal hover:bg-teal-strong text-cream rounded-card text-xs font-sans font-medium transition-colors">
+                  <Reply size={12} strokeWidth={2} /> Reply
+                </Link>
+                <Link href={`/compose?subject=${encodeURIComponent(`Fwd: ${selectedMsg.subject}`)}`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rule hover:bg-[#d8d4cb] text-ink rounded-card text-xs font-sans transition-colors">
+                  <Forward size={12} strokeWidth={2} /> Forward
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : !selectedMsgId ? null : (
+        /* selected ID but message not found */
+        <div className="flex-1 flex items-center justify-center text-ink-soft text-sm font-sans">
+          Message not found.
+        </div>
+      )}
+
+      {/* Empty state when no message selected */}
+      {!selectedMsgId && messages.length > 0 && (
+        <div className="hidden" /> /* no empty pane shown — full-width list */
+      )}
+
       {/* Help modal */}
       {showHelp && (
-        <div
-          className="fixed inset-0 bg-ink/40 z-50 flex items-center justify-center"
-          onClick={() => setShowHelp(false)}
-        >
-          <div
-            className="bg-cream rounded-card shadow-xl p-6 max-w-sm w-full mx-4 border border-rule"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-ink/40 z-50 flex items-center justify-center" onClick={() => setShowHelp(false)}>
+          <div className="bg-cream rounded-card shadow-xl p-6 max-w-sm w-full mx-4 border border-rule" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-serif font-semibold text-ink">Keyboard shortcuts</h2>
-              <button onClick={() => setShowHelp(false)} className="text-ink-soft hover:text-ink">
-                <X size={16} strokeWidth={2} />
-              </button>
+              <button onClick={() => setShowHelp(false)} className="text-ink-soft hover:text-ink"><X size={16} strokeWidth={2} /></button>
             </div>
-            <dl className="grid grid-cols-[3rem_1fr] gap-x-4 gap-y-2 text-sm font-sans">
-              {[
-                ['j / k', 'Navigate up / down'],
-                ['Enter', 'Open selected message'],
-                ['s', 'Toggle star on selected'],
-                ['/', 'Focus search bar'],
-                ['Esc', 'Clear focus / close'],
-                ['?', 'Toggle this help'],
-              ].map(([key, desc]) => (
-                <Fragment key={key}>
-                  <dt className="font-mono text-teal-strong font-medium">{key}</dt>
-                  <dd className="text-ink-soft">{desc}</dd>
+            <dl className="grid grid-cols-[3.5rem_1fr] gap-x-4 gap-y-2 text-sm font-sans">
+              {[['j / k','Navigate'], ['Enter','Open in pane'], ['s','Star selected'], ['r','Reply (pane)'], ['/','Search'], ['Esc','Close pane'], ['?','This help']].map(([k, d]) => (
+                <Fragment key={k}>
+                  <dt className="font-mono text-teal-strong font-medium">{k}</dt>
+                  <dd className="text-ink-soft">{d}</dd>
                 </Fragment>
               ))}
             </dl>
           </div>
-        </div>
-      )}
-
-      {/* Message list */}
-      <div className="flex-1 overflow-y-auto divide-y divide-rule">
-        {filtered.length === 0 && (
-          <div className="p-12 text-ink-soft text-center text-sm font-sans">
-            {searchQuery ? 'No messages match that filter.' : 'No messages.'}
-          </div>
-        )}
-
-        {threaded.map(({ msg, threadCount, isThreadHead }, idx) => {
-          const state = getState(msg.id);
-          const isFocused = focusedIdx === idx;
-
-          return (
-            <Link
-              key={msg.id}
-              href={`/inbox/${msg.id}?mailbox=${mailbox}`}
-              ref={(el) => { rowRefs.current[idx] = el; }}
-              onClick={() => markRead(msg.id)}
-              className={`flex items-center gap-3 px-6 py-3 transition-colors group ${
-                isFocused ? 'bg-teal/10' : 'hover:bg-[#f0ede4]'
-              }`}
-            >
-              {/* Unread indicator dot */}
-              <div className="flex-shrink-0 w-2 h-2 flex items-center justify-center">
-                {!state.is_read && (
-                  <div className="w-2 h-2 rounded-full bg-teal-strong" />
-                )}
-              </div>
-
-              {/* Avatar */}
-              <div
-                className={`w-8 h-8 rounded-full ${avatarColor(msg.from_addr)} flex items-center justify-center text-xs font-bold text-cream flex-shrink-0`}
-              >
-                {avatarInitial(msg.from_addr)}
-              </div>
-
-              {/* Star button */}
-              <button
-                onClick={(e) => toggleStar(e, msg.id)}
-                className="flex-shrink-0 focus:outline-none"
-                title={state.is_starred ? 'Unstar' : 'Star'}
-              >
-                <Star
-                  size={13}
-                  strokeWidth={1.5}
-                  className={`transition-colors ${
-                    state.is_starred
-                      ? 'fill-[#d8a14a] text-[#d8a14a]'
-                      : 'text-rule group-hover:text-ink-soft'
-                  }`}
-                />
-              </button>
-
-              {/* Content */}
-              <div className="flex-1 min-w-0 grid grid-cols-[10rem_1fr_auto] items-baseline gap-2">
-                <span className={`text-sm truncate ${state.is_read ? 'text-ink-soft font-normal' : 'text-ink font-semibold'}`}>
-                  {msg.from_addr.split('@')[0]}
-                </span>
-                <span className={`text-sm font-sans truncate ${state.is_read ? 'text-ink-soft' : 'text-ink'}`}>
-                  {msg.subject}
-                  {threadCount > 1 && isThreadHead && (
-                    <span className="ml-1.5 text-xs text-ink-soft font-sans">({threadCount})</span>
-                  )}
-                </span>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {(msg.attachments_meta?.length ?? 0) > 0 && (
-                    <Paperclip size={12} className="text-ink-soft" strokeWidth={1.75} />
-                  )}
-                  <span className={`text-xs font-sans whitespace-nowrap ${state.is_read ? 'text-ink-soft' : 'text-ink-soft font-medium'}`}>
-                    {formatDate(msg.received_at)}
-                  </span>
-                </div>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center items-center gap-4 px-6 py-3 border-t border-rule text-sm font-sans flex-shrink-0">
-          {page > 1 && (
-            <Link href={`/inbox?mailbox=${mailbox}&page=${page - 1}`} className="text-teal-strong hover:underline">
-              ← Prev
-            </Link>
-          )}
-          <span className="text-ink-soft">{page} / {totalPages}</span>
-          {page < totalPages && (
-            <Link href={`/inbox?mailbox=${mailbox}&page=${page + 1}`} className="text-teal-strong hover:underline">
-              Next →
-            </Link>
-          )}
         </div>
       )}
     </div>

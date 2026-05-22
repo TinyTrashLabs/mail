@@ -4,37 +4,84 @@ import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
 
 const FROM_DOMAIN = process.env.RESEND_FROM_DOMAIN || 'tinytrashlabs.com';
-
-/** Only these usernames may send as <name>@tinytrashlabs.com via Resend. */
 const PERSONAL = new Set(['david', 'shane', 'derek', 'ryan']);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MSGID_SAFE_RE = /^[^\r\n\x00]*$/;
+
+function parseEmailList(val: string | string[] | null): string[] {
+  if (!val) return [];
+  const raw = Array.isArray(val) ? val : [val];
+  return raw.flatMap(v => v.split(',').map(s => s.trim())).filter(Boolean);
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const username = (session as { username?: string }).username ?? '';
-
-  // Fix: only PERSONAL members may send outbound; prevents from-address spoofing
   if (!PERSONAL.has(username)) {
     return NextResponse.json({ error: 'forbidden: not a personal mailbox user' }, { status: 403 });
   }
 
-  const { to, subject, body, inReplyTo, references } = await req.json();
+  if (!process.env.RESEND_API_KEY) {
+    return NextResponse.json({ error: 'mail sending not configured' }, { status: 503 });
+  }
 
-  if (!to || !subject || !body) {
+  const contentType = req.headers.get('content-type') || '';
+  let to: string[], subject: string, bodyText: string, bodyHtml: string | undefined;
+  let cc: string[], bcc: string[], inReplyTo: string | undefined, references: string | undefined;
+  let attachmentFiles: { filename: string; content: Buffer; contentType: string }[] = [];
+
+  if (contentType.includes('multipart/form-data')) {
+    // Attachment path
+    const form = await req.formData();
+    to = parseEmailList(form.getAll('to') as string[]);
+    cc = parseEmailList(form.getAll('cc') as string[]);
+    bcc = parseEmailList(form.getAll('bcc') as string[]);
+    subject = String(form.get('subject') || '');
+    bodyText = String(form.get('body') || '');
+    bodyHtml = form.has('html') ? String(form.get('html')) : undefined;
+    inReplyTo = form.has('inReplyTo') ? String(form.get('inReplyTo')) : undefined;
+
+    const files = form.getAll('attachments') as File[];
+    if (files.length > 10) {
+      return NextResponse.json({ error: 'too many attachments (max 10)' }, { status: 400 });
+    }
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+    if (totalBytes > 25 * 1024 * 1024) {
+      return NextResponse.json({ error: 'attachments too large (max 25 MB total)' }, { status: 400 });
+    }
+    attachmentFiles = await Promise.all(
+      files.map(async (f) => ({
+        filename: f.name,
+        content: Buffer.from(await f.arrayBuffer()),
+        contentType: f.type || 'application/octet-stream',
+      }))
+    );
+  } else {
+    const json = await req.json();
+    to = parseEmailList(json.to);
+    cc = parseEmailList(json.cc);
+    bcc = parseEmailList(json.bcc);
+    subject = String(json.subject || '');
+    bodyText = String(json.body || '');
+    bodyHtml = json.html ? String(json.html) : undefined;
+    inReplyTo = json.inReplyTo ? String(json.inReplyTo) : undefined;
+    references = json.references ? String(json.references) : undefined;
+  }
+
+  if (!to.length || !subject || !bodyText) {
     return NextResponse.json({ error: 'to, subject, body required' }, { status: 400 });
   }
-
-  // Validate `to` — must be a single RFC5322-ish email or array of them.
-  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const toList = Array.isArray(to) ? to : [to];
-  if (toList.length === 0 || !toList.every((addr) => typeof addr === 'string' && EMAIL_RE.test(addr))) {
+  if (!to.every(addr => EMAIL_RE.test(addr))) {
     return NextResponse.json({ error: 'invalid to address' }, { status: 400 });
   }
-
-  // Validate inReplyTo / references — must look like a Message-ID (<...@...>).
-  // Reject anything with CR, LF, or NUL to prevent header injection.
-  const MSGID_SAFE_RE = /^[^\r\n\x00]*$/;
+  if (cc.length && !cc.every(addr => EMAIL_RE.test(addr))) {
+    return NextResponse.json({ error: 'invalid cc address' }, { status: 400 });
+  }
+  if (bcc.length && !bcc.every(addr => EMAIL_RE.test(addr))) {
+    return NextResponse.json({ error: 'invalid bcc address' }, { status: 400 });
+  }
   if (inReplyTo && !MSGID_SAFE_RE.test(inReplyTo)) {
     return NextResponse.json({ error: 'invalid inReplyTo' }, { status: 400 });
   }
@@ -42,26 +89,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid references' }, { status: 400 });
   }
 
-  // from address is always derived from the authenticated session — never from the request body
   const from = `${username}@${FROM_DOMAIN}`;
-
   const extraHeaders: Record<string, string> = {};
   if (inReplyTo) extraHeaders['In-Reply-To'] = inReplyTo;
   if (references) extraHeaders['References'] = references;
 
-  if (!process.env.RESEND_API_KEY) {
-    return NextResponse.json({ error: 'mail sending not configured' }, { status: 503 });
-  }
-  // Instantiate Resend lazily inside the handler so the module can be imported
-  // during Next.js build without requiring RESEND_API_KEY at build time.
   const resend = new Resend(process.env.RESEND_API_KEY);
-
   const { data, error } = await resend.emails.send({
     from,
-    to: toList,
+    to,
+    ...(cc.length ? { cc } : {}),
+    ...(bcc.length ? { bcc } : {}),
     subject,
-    text: body,
+    text: bodyText,
+    ...(bodyHtml ? { html: bodyHtml } : {}),
     ...(Object.keys(extraHeaders).length ? { headers: extraHeaders } : {}),
+    ...(attachmentFiles.length ? {
+      attachments: attachmentFiles.map(f => ({
+        filename: f.filename,
+        content: f.content,
+      })),
+    } : {}),
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 502 });

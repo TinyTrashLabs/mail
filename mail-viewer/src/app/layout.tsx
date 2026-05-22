@@ -4,7 +4,12 @@ import Provider from './session-provider';
 
 export const metadata: Metadata = {
   title: 'TTL Mail',
-  description: 'Tiny Trash Labs email viewer',
+  description: 'Tiny Trash Labs email',
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/ttl-mascot-logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
