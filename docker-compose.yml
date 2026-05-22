@@ -68,9 +68,11 @@ services:
 
 volumes:
   mail-store-db-data:
-  # External: provisioned and refreshed by the claude-personas-server compose
-  # stack. We mount it read-only so the viewer can authenticate AI calls
-  # without owning the credential lifecycle.
+  # External: provisioned by the claude-personas-server compose stack.
+  # Mounted RW into the viewer because @anthropic-ai/claude-agent-sdk refreshes
+  # the OAuth token in-place; a RO mount would silently fail when the token
+  # rotates. Personas stack mounts this same volume RW for the same reason —
+  # token refresh is cooperative, last writer wins on rotation.
   claude-creds:
     external: true
     name: claude-personas-server_claude-creds
