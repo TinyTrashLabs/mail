@@ -10,13 +10,14 @@ export async function GET(req: NextRequest) {
   const username = (session as { username?: string }).username ?? '';
   const reqMailbox = req.nextUrl.searchParams.get('mailbox') || 'shared';
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1');
+  const tag = req.nextUrl.searchParams.get('tag') || undefined;
 
   // Viewer-layer guard: reject before even hitting the store
   const allowed = reqMailbox === 'shared' || reqMailbox === username;
   if (!allowed) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   try {
-    const data = await fetchMessages(reqMailbox, username, page);
+    const data = await fetchMessages(reqMailbox, username, page, 50, tag);
     return NextResponse.json(data);
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status ?? 500;
