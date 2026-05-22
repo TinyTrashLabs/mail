@@ -34,3 +34,22 @@ export function parseMessageId(raw) {
   if (!Number.isInteger(n) || n < 1 || n > Number.MAX_SAFE_INTEGER) return null;
   return n;
 }
+
+
+/**
+ * Write-side: a non-empty PERSONAL viewer may mutate 'shared' (acting as
+ * a team member) or their own personal mailbox. Empty/anonymous viewers
+ * cannot mutate anything.
+ */
+export function canWriteToMailbox(mailbox, viewerUser) {
+  if (!viewerUser || !PERSONAL.has(viewerUser)) return false;
+  return mailbox === 'shared' || mailbox === viewerUser;
+}
+
+/**
+ * Same as canReadMessage but requires an authenticated PERSONAL viewer.
+ * Used by write endpoints that touch a single message.
+ */
+export function canWriteMessage(msgMailbox, viewerUser) {
+  return canWriteToMailbox(msgMailbox, viewerUser);
+}
