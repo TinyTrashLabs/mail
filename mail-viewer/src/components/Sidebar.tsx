@@ -26,7 +26,7 @@ export function Sidebar({ username, mailbox, tag: activeTag }: SidebarProps) {
   ];
 
   return (
-    <aside className="w-52 bg-[#f0ede4] border-r border-rule flex flex-col h-full flex-shrink-0">
+    <aside className="hidden sm:flex w-52 bg-[#f0ede4] border-r border-rule flex-col h-full flex-shrink-0">
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 py-4 border-b border-rule">
         {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -90,7 +90,7 @@ export default async function MessagePage({
     <div className="flex h-screen overflow-hidden">
       <Sidebar username={username} mailbox={mailbox} />
 
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Toolbar */}
         <div className="flex items-center gap-2 px-6 py-3 border-b border-rule bg-cream flex-shrink-0">
           <Link
