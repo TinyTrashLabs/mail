@@ -94,6 +94,103 @@ router.post('/messages/:id/tags', async (req, res) => {
   }
 });
 
+// DELETE /messages/:id/tags/:tag — remove a single tag from a message.
+router.delete('/messages/:id/tags/:tag', async (req, res) => {
+  if (!checkAuth(req, res)) return;
+  const viewerUser = resolveViewerUser(req, res);
+  if (viewerUser === null) return;
+
+  const id = parseInt(req.params.id);
+  if (!id) return res.status(400).json({ error: 'invalid id' });
+  const tag = String(req.params.tag || '').toLowerCase().trim();
+  if (!tag || tag.length > 32) return res.status(400).json({ error: 'invalid tag' });
+
+  try {
+    const { rows } = await pool.query('SELECT mailbox FROM messages WHERE id = $1', [id]);
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    if (!canReadMessage(rows[0].mailbox, viewerUser)) return res.status(403).json({ error: 'forbidden' });
+    await pool.query('DELETE FROM message_tags WHERE message_id = $1 AND tag = $2', [id, tag]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'db error' });
+  }
+});
+
+// PATCH /tags?mailbox=...  { from: 'oldtag', to: 'newtag' }
+// Rename a tag across every message in a mailbox (scoped — no cross-mailbox renames).
+router.patch('/tags', async (req, res) => {
+  if (!checkAuth(req, res)) return;
+  const viewerUser = resolveViewerUser(req, res);
+  if (viewerUser === null) return;
+
+  const mailbox = req.query.mailbox || 'shared';
+  if (mailbox !== 'shared' && mailbox !== viewerUser) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  const from = String(req.body?.from || '').toLowerCase().trim();
+  const to = String(req.body?.to || '').toLowerCase().trim();
+  if (!from || !to || from.length > 32 || to.length > 32) {
+    return res.status(400).json({ error: 'invalid from/to' });
+  }
+  if (from === to) return res.json({ ok: true, renamed: 0 });
+
+  try {
+    // Two-step rename: insert new tag on matching messages, then delete old tag.
+    // ON CONFLICT DO NOTHING avoids duplicate-key blowups when both tags
+    // already coexist on a message.
+    const insertSql = `
+      INSERT INTO message_tags (message_id, tag, source)
+      SELECT mt.message_id, $1, mt.source
+      FROM message_tags mt
+      JOIN messages m ON m.id = mt.message_id
+      WHERE m.mailbox = $2 AND mt.tag = $3
+      ON CONFLICT (message_id, tag) DO NOTHING
+    `;
+    await pool.query(insertSql, [to, mailbox, from]);
+
+    const deleteSql = `
+      DELETE FROM message_tags
+      WHERE tag = $1
+        AND message_id IN (SELECT id FROM messages WHERE mailbox = $2)
+    `;
+    const result = await pool.query(deleteSql, [from, mailbox]);
+    res.json({ ok: true, renamed: result.rowCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'db error' });
+  }
+});
+
+// DELETE /tags?mailbox=...&tag=foo — remove a tag from every message in a mailbox.
+router.delete('/tags', async (req, res) => {
+  if (!checkAuth(req, res)) return;
+  const viewerUser = resolveViewerUser(req, res);
+  if (viewerUser === null) return;
+
+  const mailbox = req.query.mailbox || 'shared';
+  if (mailbox !== 'shared' && mailbox !== viewerUser) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  const tag = String(req.query.tag || '').toLowerCase().trim();
+  if (!tag) return res.status(400).json({ error: 'tag required' });
+
+  try {
+    const result = await pool.query(
+      `DELETE FROM message_tags
+       WHERE tag = $1
+         AND message_id IN (SELECT id FROM messages WHERE mailbox = $2)`,
+      [tag, mailbox]
+    );
+    res.json({ ok: true, deleted: result.rowCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'db error' });
+  }
+});
+
 // GET /tags?mailbox=shared
 router.get('/tags', async (req, res) => {
   if (!checkAuth(req, res)) return;

@@ -1,6 +1,11 @@
+/**
+ * Per-message tag management — POST adds, DELETE removes (via ?tag= query).
+ * Both proxy to mail-store with a minted viewer token so access control
+ * happens in one place.
+ */
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 
 const STORE_URL = process.env.MAIL_STORE_URL!;
@@ -23,53 +28,35 @@ function viewerHeaders(user: string, contentType?: string): HeadersInit {
   return h;
 }
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!/^[1-9]\d*$/.test(params.id)) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
+
   const username = (session as { username?: string }).username ?? '';
-
-  const mailbox = req.nextUrl.searchParams.get('mailbox') || 'shared';
-  const resp = await fetch(`${STORE_URL}/tags?mailbox=${encodeURIComponent(mailbox)}`, {
-    headers: viewerHeaders(username),
-    cache: 'no-store',
-  });
-  if (!resp.ok) return NextResponse.json({ error: 'store error' }, { status: 502 });
-  return NextResponse.json(await resp.json());
-}
-
-// PATCH /api/tags?mailbox=...  { from, to }  — rename a tag across a mailbox.
-export async function PATCH(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  const username = (session as { username?: string }).username ?? '';
-
-  const mailbox = req.nextUrl.searchParams.get('mailbox') || 'shared';
   const body = await req.json().catch(() => null);
-  if (!body || typeof body.from !== 'string' || typeof body.to !== 'string') {
-    return NextResponse.json({ error: 'from/to required' }, { status: 400 });
-  }
-  const resp = await fetch(`${STORE_URL}/tags?mailbox=${encodeURIComponent(mailbox)}`, {
-    method: 'PATCH',
+  if (!body || !Array.isArray(body.tags)) return NextResponse.json({ error: 'tags required' }, { status: 400 });
+
+  const resp = await fetch(`${STORE_URL}/messages/${params.id}/tags`, {
+    method: 'POST',
     headers: viewerHeaders(username, 'application/json'),
-    body: JSON.stringify({ from: body.from, to: body.to }),
+    body: JSON.stringify({ tags: body.tags, source: body.source || 'user' }),
     cache: 'no-store',
   });
   const json = await resp.json().catch(() => ({}));
   return NextResponse.json(json, { status: resp.status });
 }
 
-// DELETE /api/tags?mailbox=...&tag=...
-export async function DELETE(req: NextRequest) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  const username = (session as { username?: string }).username ?? '';
+  if (!/^[1-9]\d*$/.test(params.id)) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
 
-  const mailbox = req.nextUrl.searchParams.get('mailbox') || 'shared';
   const tag = req.nextUrl.searchParams.get('tag') || '';
   if (!tag) return NextResponse.json({ error: 'tag required' }, { status: 400 });
+  const username = (session as { username?: string }).username ?? '';
 
-  const url = `${STORE_URL}/tags?mailbox=${encodeURIComponent(mailbox)}&tag=${encodeURIComponent(tag)}`;
-  const resp = await fetch(url, {
+  const resp = await fetch(`${STORE_URL}/messages/${params.id}/tags/${encodeURIComponent(tag)}`, {
     method: 'DELETE',
     headers: viewerHeaders(username),
     cache: 'no-store',
