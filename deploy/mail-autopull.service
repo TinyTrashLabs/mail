@@ -1,0 +1,18 @@
+[Unit]
+Description=TinyTrashLabs mail auto-pull and redeploy (oneshot)
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=patch
+Group=patch
+WorkingDirectory=/home/patch/projects/mail
+ExecStart=/opt/mail/deploy/mail-autopull.sh
+Environment=CHECKOUT=/home/patch/projects/mail
+Environment=COMPOSE_FILE=/opt/mail/docker-compose.yml
+Environment=IT_HELP_CHANNEL_ID=hwwyb3bqrjrqdkakgja7ssgq3a
+Environment=MM_URL_HOST=https://mm.tinytrashlabs.com
+EnvironmentFile=/opt/mail/.env
+EnvironmentFile=-/opt/mail/deploy/mail-autopull.env
+SuccessExitStatus=0

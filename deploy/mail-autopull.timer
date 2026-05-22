@@ -1,0 +1,12 @@
+[Unit]
+Description=Run mail-autopull every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=mail-autopull.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
