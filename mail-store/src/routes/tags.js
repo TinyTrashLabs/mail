@@ -5,7 +5,35 @@ import { verifyViewerToken } from '../viewer-token.js';
 
 const router = Router();
 
-const TAG_RE = /^[a-z][a-z0-9-]{0,31}$/;
+export const TAG_RE = /^[a-z][a-z0-9-]{0,31}$/;
+
+// Pure validators — exported for tests. None touch the db or req/res.
+export function normalizeMailboxQuery(value) {
+  return typeof value === 'string' && value ? value : 'shared';
+}
+
+export function normalizeTagInput(value) {
+  return typeof value === 'string' ? value.toLowerCase().trim() : '';
+}
+
+export function normalizeTagsArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(t => String(t).toLowerCase().trim())
+    .filter(t => TAG_RE.test(t))
+    .slice(0, 20);
+}
+
+export function normalizeSource(value) {
+  return value === 'user' ? 'user' : 'ai';
+}
+
+export function validateRenamePair(from, to) {
+  if (!TAG_RE.test(from) || !TAG_RE.test(to)) return { ok: false, error: 'invalid from/to' };
+  if (from === to) return { ok: true, noop: true };
+  return { ok: true, noop: false };
+}
+
 
 function checkAuth(req, res) {
   const auth = req.headers.authorization || '';
@@ -58,12 +86,8 @@ router.post('/messages/:id/tags', async (req, res) => {
   const id = parseInt(req.params.id);
   if (!id) return res.status(400).json({ error: 'invalid id' });
 
-  const rawTags = Array.isArray(req.body.tags) ? req.body.tags : [];
-  const tags = rawTags
-    .map(t => String(t).toLowerCase().trim())
-    .filter(t => TAG_RE.test(t))
-    .slice(0, 20); // cap at 20 tags per request
-  const source = req.body.source === 'user' ? 'user' : 'ai';
+  const tags = normalizeTagsArray(req.body.tags);
+  const source = normalizeSource(req.body.source);
 
   if (!tags.length) return res.status(400).json({ error: 'tags required' });
 
@@ -104,7 +128,7 @@ router.delete('/messages/:id/tags/:tag', async (req, res) => {
 
   const id = parseInt(req.params.id);
   if (!id) return res.status(400).json({ error: 'invalid id' });
-  const tag = String(req.params.tag || '').toLowerCase().trim();
+  const tag = normalizeTagInput(req.params.tag);
   if (!TAG_RE.test(tag)) return res.status(400).json({ error: 'invalid tag' });
 
   try {
@@ -126,22 +150,23 @@ router.patch('/tags', async (req, res) => {
   const viewerUser = resolveViewerUser(req, res);
   if (viewerUser === null) return;
 
-  const mailbox = typeof req.query.mailbox === 'string' && req.query.mailbox ? req.query.mailbox : 'shared';
+  const mailbox = normalizeMailboxQuery(req.query.mailbox);
   if (!canWriteToMailbox(mailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }
 
-  const from = String(req.body?.from || '').toLowerCase().trim();
-  const to = String(req.body?.to || '').toLowerCase().trim();
-  if (!TAG_RE.test(from) || !TAG_RE.test(to)) {
-    return res.status(400).json({ error: 'invalid from/to' });
-  }
-  if (from === to) return res.json({ ok: true, renamed: 0 });
+  const from = normalizeTagInput(req.body?.from);
+  const to = normalizeTagInput(req.body?.to);
+  const v = validateRenamePair(from, to);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  if (v.noop) return res.json({ ok: true, renamed: 0 });
 
+  // Rename runs in a single transaction so a failure between INSERT and DELETE
+  // cannot leave both old + new tag rows behind, and concurrent writers see a
+  // consistent view.
+  const client = await pool.connect();
   try {
-    // Two-step rename: insert new tag on matching messages, then delete old tag.
-    // ON CONFLICT DO NOTHING avoids duplicate-key blowups when both tags
-    // already coexist on a message.
+    await client.query('BEGIN');
     const insertSql = `
       INSERT INTO message_tags (message_id, tag, source)
       SELECT mt.message_id, $1, mt.source
@@ -154,18 +179,22 @@ router.patch('/tags', async (req, res) => {
         ELSE message_tags.source
       END
     `;
-    await pool.query(insertSql, [to, mailbox, from]);
+    await client.query(insertSql, [to, mailbox, from]);
 
     const deleteSql = `
       DELETE FROM message_tags
       WHERE tag = $1
         AND message_id IN (SELECT id FROM messages WHERE mailbox = $2)
     `;
-    const result = await pool.query(deleteSql, [from, mailbox]);
+    const result = await client.query(deleteSql, [from, mailbox]);
+    await client.query('COMMIT');
     res.json({ ok: true, renamed: result.rowCount });
   } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
     console.error(err);
     res.status(500).json({ error: 'db error' });
+  } finally {
+    client.release();
   }
 });
 
@@ -175,12 +204,14 @@ router.delete('/tags', async (req, res) => {
   const viewerUser = resolveViewerUser(req, res);
   if (viewerUser === null) return;
 
-  const mailbox = typeof req.query.mailbox === 'string' && req.query.mailbox ? req.query.mailbox : 'shared';
+  const mailbox = normalizeMailboxQuery(req.query.mailbox);
   if (!canWriteToMailbox(mailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }
 
-  const tag = typeof req.query.tag === 'string' ? req.query.tag.toLowerCase().trim() : '';
+  // Accept tag from either ?tag= query or { tag } JSON body — both forms
+  // are reasonable for a DELETE.
+  const tag = normalizeTagInput(req.query.tag ?? req.body?.tag);
   if (!TAG_RE.test(tag)) return res.status(400).json({ error: 'invalid tag' });
 
   try {
@@ -202,7 +233,7 @@ router.get('/tags', async (req, res) => {
   if (!checkAuth(req, res)) return;
   const viewerUser = resolveViewerUser(req, res);
   if (viewerUser === null) return;
-  const mailbox = typeof req.query.mailbox === 'string' && req.query.mailbox ? req.query.mailbox : 'shared';
+  const mailbox = normalizeMailboxQuery(req.query.mailbox);
   if (!canAccessMailbox(mailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }

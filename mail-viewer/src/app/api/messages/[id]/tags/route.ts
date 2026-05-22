@@ -25,10 +25,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .slice(0, 20);
   if (!tags.length) return NextResponse.json({ error: 'no valid tags' }, { status: 400 });
 
+  // Require an explicit { source: 'user' | 'ai' } so a missing/typo'd field
+  // can't silently mislabel provenance. AddTagDialog always sends 'user';
+  // the AI auto-tag route always sends 'ai'.
+  if (body.source !== 'user' && body.source !== 'ai') {
+    return NextResponse.json({ error: "source must be 'user' or 'ai'" }, { status: 400 });
+  }
+
   const resp = await fetch(`${STORE_URL}/messages/${params.id}/tags`, {
     method: 'POST',
     headers: viewerHeaders(username, 'application/json'),
-    body: JSON.stringify({ tags, source: body.source === 'user' ? 'user' : 'ai' }),
+    body: JSON.stringify({ tags, source: body.source }),
     cache: 'no-store',
   });
   const json = await resp.json().catch(() => ({}));

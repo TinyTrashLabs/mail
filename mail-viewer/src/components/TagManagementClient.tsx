@@ -53,24 +53,10 @@ export function TagManagementClient({
     }
     if (to === editing) { cancelEdit(); return; }
     setBusy(true); setError(null);
-    const prev = tags;
-    // Optimistic update: rebuild the list with the rename applied,
-    // merging counts when 'to' already exists.
-    const next: TagRow[] = [];
-    const oldCount = tags.find(t => t.tag === editing)?.count ?? 0;
-    let merged = false;
-    for (const t of tags) {
-      if (t.tag === editing) continue;
-      if (t.tag === to) {
-        next.push({ tag: to, count: t.count + oldCount });
-        merged = true;
-      } else {
-        next.push(t);
-      }
-    }
-    if (!merged) next.push({ tag: to, count: oldCount });
-    next.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-    setTags(next);
+    // Skip optimistic merge — count math is easy but source-precedence (user
+    // wins over ai on conflict) lives in the SQL CASE on the store side, and
+    // an optimistic guess would drift from the true row. Just clear the
+    // edit state and let router.refresh() resync from the server.
     setEditing(null);
 
     try {
@@ -82,7 +68,6 @@ export function TagManagementClient({
       if (!resp.ok) throw new Error((await resp.json()).error || 'rename failed');
       router.refresh();
     } catch (err) {
-      setTags(prev);
       setError(err instanceof Error ? err.message : 'rename failed');
     } finally {
       setBusy(false);
