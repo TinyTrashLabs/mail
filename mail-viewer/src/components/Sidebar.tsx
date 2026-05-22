@@ -97,7 +97,7 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag }: Sidebar
           <div className="px-3 py-1 text-[11px] font-sans text-ink-soft/60 italic">No tags yet</div>
         ) : (
           tags.map(({ tag }) => (
-            <Link key={tag} href={`/inbox?mailbox=${mailbox}&tag=${tag}`}
+            <Link key={tag} href={`/inbox?mailbox=${encodeURIComponent(mailbox)}&tag=${encodeURIComponent(tag)}`}
               className={`flex items-center gap-2.5 px-3 py-1.5 rounded-card text-sm font-sans transition-colors ${activeTag === tag ? 'bg-teal text-cream font-medium' : 'text-ink-soft hover:bg-rule hover:text-ink'}`}>
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${tagDot(tag)}`} />
               <span className="truncate">{tag}</span>

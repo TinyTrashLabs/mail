@@ -60,8 +60,8 @@ router.post('/messages/:id/tags', async (req, res) => {
 
   const rawTags = Array.isArray(req.body.tags) ? req.body.tags : [];
   const tags = rawTags
-    .map(t => String(t).toLowerCase().trim().slice(0, 32))
-    .filter(Boolean)
+    .map(t => String(t).toLowerCase().trim())
+    .filter(t => TAG_RE.test(t))
     .slice(0, 20); // cap at 20 tags per request
   const source = req.body.source === 'user' ? 'user' : 'ai';
 
