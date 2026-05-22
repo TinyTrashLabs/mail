@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
-import { canReadMessage } from '../access.js';
+import { canReadMessage, canWriteMessage, canWriteToMailbox } from '../access.js';
 import { verifyViewerToken } from '../viewer-token.js';
 
 const router = Router();
@@ -68,7 +68,7 @@ router.post('/messages/:id/tags', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT mailbox FROM messages WHERE id = $1', [id]);
     if (!rows.length) return res.status(404).json({ error: 'not found' });
-    if (!canReadMessage(rows[0].mailbox, viewerUser)) return res.status(403).json({ error: 'forbidden' });
+    if (!canWriteMessage(rows[0].mailbox, viewerUser)) return res.status(403).json({ error: 'forbidden' });
 
     // Check existing tag count to enforce per-message cap of 50
     const { rows: countRows } = await pool.query(
@@ -108,7 +108,7 @@ router.delete('/messages/:id/tags/:tag', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT mailbox FROM messages WHERE id = $1', [id]);
     if (!rows.length) return res.status(404).json({ error: 'not found' });
-    if (!canReadMessage(rows[0].mailbox, viewerUser)) return res.status(403).json({ error: 'forbidden' });
+    if (!canWriteMessage(rows[0].mailbox, viewerUser)) return res.status(403).json({ error: 'forbidden' });
     await pool.query('DELETE FROM message_tags WHERE message_id = $1 AND tag = $2', [id, tag]);
     res.json({ ok: true });
   } catch (err) {
@@ -125,7 +125,7 @@ router.patch('/tags', async (req, res) => {
   if (viewerUser === null) return;
 
   const mailbox = req.query.mailbox || 'shared';
-  if (mailbox !== 'shared' && mailbox !== viewerUser) {
+  if (!canWriteToMailbox(mailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }
 
@@ -146,7 +146,11 @@ router.patch('/tags', async (req, res) => {
       FROM message_tags mt
       JOIN messages m ON m.id = mt.message_id
       WHERE m.mailbox = $2 AND mt.tag = $3
-      ON CONFLICT (message_id, tag) DO NOTHING
+      ON CONFLICT (message_id, tag)
+      DO UPDATE SET source = CASE
+        WHEN message_tags.source = 'user' OR EXCLUDED.source = 'user' THEN 'user'
+        ELSE message_tags.source
+      END
     `;
     await pool.query(insertSql, [to, mailbox, from]);
 
@@ -170,7 +174,7 @@ router.delete('/tags', async (req, res) => {
   if (viewerUser === null) return;
 
   const mailbox = req.query.mailbox || 'shared';
-  if (mailbox !== 'shared' && mailbox !== viewerUser) {
+  if (!canWriteToMailbox(mailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }
 

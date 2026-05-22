@@ -15,6 +15,47 @@ import { useEffect, useRef, useState } from 'react';
 import { Send, X, Paperclip, Bold, Italic, Link2, List, Save, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { AIDraftAssist } from '@/components/AIDraftAssist';
 
+/**
+ * Lightweight client-side HTML sanitizer.
+ * Strips <script>/<style>/<iframe>/etc, drops all on* attributes,
+ * blocks javascript: / data: hrefs and srcs. Defense in depth — the
+ * server-side /api/send also re-sanitizes before Resend.
+ */
+const DENY_TAGS = new Set(['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'link', 'meta', 'base', 'svg', 'math']);
+function sanitizeClientHtml(html: string): string {
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') return '';
+  const doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
+  const root = doc.body.firstElementChild as HTMLElement | null;
+  if (!root) return '';
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  const toRemove: Element[] = [];
+  let el: Element | null = walker.currentNode as Element;
+  while (el) {
+    const tag = el.tagName.toLowerCase();
+    if (DENY_TAGS.has(tag)) {
+      toRemove.push(el);
+    } else {
+      // Strip on* attributes + dangerous href/src schemes.
+      for (const attr of Array.from(el.attributes)) {
+        const name = attr.name.toLowerCase();
+        if (name.startsWith('on')) {
+          el.removeAttribute(attr.name);
+          continue;
+        }
+        if (name === 'href' || name === 'src' || name === 'xlink:href') {
+          const v = (attr.value || '').trim().toLowerCase();
+          if (v.startsWith('javascript:') || v.startsWith('data:text/html') || v.startsWith('vbscript:')) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      }
+    }
+    el = walker.nextNode() as Element | null;
+  }
+  for (const node of toRemove) node.parentNode?.removeChild(node);
+  return root.innerHTML;
+}
+
 export interface ComposeInit {
   to?: string;
   cc?: string;
@@ -59,7 +100,7 @@ export function ComposeTray({ open, init, onClose }: { open: boolean; init: Comp
     setBcc(init.bcc ?? '');
     setSubject(init.subject ?? '');
     setBody(init.body ?? '');
-    if (editorRef.current) editorRef.current.innerHTML = (init.body ?? '').replace(/\n/g, '<br>');
+    if (editorRef.current) editorRef.current.innerHTML = sanitizeClientHtml((init.body ?? '').replace(/\n/g, '<br>'));
     setShowCcBcc(Boolean(init.cc || init.bcc));
     setState('normal');
   }, [init, open]);
@@ -76,7 +117,7 @@ export function ComposeTray({ open, init, onClose }: { open: boolean; init: Comp
         const d = JSON.parse(raw);
         setTo(d.to ?? ''); setCc(d.cc ?? ''); setBcc(d.bcc ?? '');
         setSubject(d.subject ?? ''); setBody(d.body ?? '');
-        if (editorRef.current) editorRef.current.innerHTML = (d.body ?? '').replace(/\n/g, '<br>');
+        if (editorRef.current) editorRef.current.innerHTML = sanitizeClientHtml((d.body ?? '').replace(/\n/g, '<br>'));
         setSavedAt(d.savedAt ?? null);
       }
     } catch {}
@@ -105,7 +146,7 @@ export function ComposeTray({ open, init, onClose }: { open: boolean; init: Comp
 
   function getBodyContent(): { text: string; html: string | null } {
     if (editorMode === 'rich' && editorRef.current) {
-      const html = editorRef.current.innerHTML;
+      const html = sanitizeClientHtml(editorRef.current.innerHTML);
       const text = editorRef.current.innerText || '';
       return { text, html };
     }
@@ -114,7 +155,7 @@ export function ComposeTray({ open, init, onClose }: { open: boolean; init: Comp
 
   function handleDraft(draft: string) {
     if (editorMode === 'rich' && editorRef.current) {
-      editorRef.current.innerHTML = draft.replace(/\n/g, '<br>');
+      editorRef.current.innerHTML = sanitizeClientHtml(draft.replace(/\n/g, '<br>'));
       setRichBodyText(editorRef.current.innerText || draft);
     } else {
       setBody(draft);

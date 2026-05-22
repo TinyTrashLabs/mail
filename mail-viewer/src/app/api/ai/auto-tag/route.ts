@@ -14,7 +14,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAIClient, AI_MODEL } from '@/lib/ai';
+import { getAIClient, AI_MODEL } from "@/lib/ai";
+import { stripHtml } from "@/lib/ai-utils";
 import { checkRateLimit } from '@/lib/ai-rate-limit';
 
 const MAX_BODY_LENGTH = 3000;
@@ -39,7 +40,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const subject: string = typeof body.subject === 'string' ? body.subject.slice(0, 500) : '';
   const from: string = typeof body.from === 'string' ? body.from.slice(0, 200) : '';
-  const emailBody: string = typeof body.body === 'string' ? body.body.slice(0, MAX_BODY_LENGTH) : '';
+  const rawBody: string = typeof body.body === 'string' ? body.body : '';
+  // Strip HTML before passing to the LLM — saves tokens and removes
+  // any embedded script/style content that could pollute the prompt.
+  const emailBody: string = (rawBody.includes('<') ? stripHtml(rawBody) : rawBody).slice(0, MAX_BODY_LENGTH);
   const existing: string[] = Array.isArray(body.existingTags)
     ? body.existingTags.slice(0, 50).filter((t: unknown) => typeof t === 'string')
     : [];
