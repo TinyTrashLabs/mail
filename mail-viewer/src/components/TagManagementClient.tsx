@@ -72,7 +72,7 @@ export function TagManagementClient({
     } finally {
       setBusy(false);
     }
-  }, [editing, draftName, tags, mailbox, cancelEdit, router]);
+  }, [editing, draftName, mailbox, router]);
 
   const deleteTag = useCallback(async (tag: string) => {
     if (!confirm(`Delete tag "${tag}" from every message in this mailbox? This cannot be undone.`)) return;

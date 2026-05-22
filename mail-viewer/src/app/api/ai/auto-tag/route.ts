@@ -48,7 +48,10 @@ export async function POST(req: NextRequest) {
   // any embedded script/style content that could pollute the prompt.
   const emailBody: string = (rawBody.includes('<') ? stripHtml(rawBody) : rawBody).slice(0, MAX_BODY_LENGTH);
   const existing: string[] = Array.isArray(body.existingTags)
-    ? body.existingTags.slice(0, 50).filter((t: unknown) => typeof t === 'string')
+    ? body.existingTags
+        .filter((t: unknown): t is string => typeof t === 'string')
+        .map((t: string) => t.slice(0, 32))
+        .slice(0, 50)
     : [];
 
   if (!subject && !emailBody) return NextResponse.json({ error: 'subject or body required' }, { status: 400 });

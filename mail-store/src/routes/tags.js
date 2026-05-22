@@ -209,9 +209,10 @@ router.delete('/tags', async (req, res) => {
     return res.status(403).json({ error: 'forbidden' });
   }
 
-  // Accept tag from either ?tag= query or { tag } JSON body — both forms
-  // are reasonable for a DELETE.
-  const tag = normalizeTagInput(req.query.tag ?? req.body?.tag);
+  // Tag comes from ?tag= query only. DELETE with a JSON body is ambiguous
+  // across HTTP clients (curl --data, fetch, http-proxy middlewares); the
+  // ?tag= form is canonical and unambiguous.
+  const tag = normalizeTagInput(req.query.tag);
   if (!TAG_RE.test(tag)) return res.status(400).json({ error: 'invalid tag' });
 
   try {
