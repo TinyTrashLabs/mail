@@ -197,14 +197,14 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
                 <div className="flex items-center border-b border-rule">
                   <label className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">CC</label>
                   <input value={cc} onChange={e => setCc(e.target.value)}
-                    type="email"
+                    type="email" multiple
                     className="flex-1 bg-transparent px-3 py-2.5 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                     placeholder="cc@example.com" />
                 </div>
                 <div className="flex items-center border-b border-rule">
                   <label className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">BCC</label>
                   <input value={bcc} onChange={e => setBcc(e.target.value)}
-                    type="email"
+                    type="email" multiple
                     className="flex-1 bg-transparent px-3 py-2.5 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                     placeholder="bcc@example.com" />
                 </div>
