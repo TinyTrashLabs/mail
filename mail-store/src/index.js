@@ -4,16 +4,15 @@ import { initSchema } from './db.js';
 import ingestRouter from './routes/ingest.js';
 import messagesRouter from './routes/messages.js';
 import stateRouter from './routes/state.js';
+import tagsRouter from './routes/tags.js';
 
 const app = express();
 app.use(express.json({ limit: '20mb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/', ingestRouter);
-// stateRouter defines GET /message-states and PATCH /message-states/:id.
-// Using a distinct top-level path avoids any ordering dependency with
-// messagesRouter's /messages/:id GET route.
 app.use('/', stateRouter);
+app.use('/', tagsRouter);
 app.use('/', messagesRouter);
 
 const PORT = process.env.PORT || 3025;

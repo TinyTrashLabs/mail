@@ -14,17 +14,9 @@ function checkAuth(req, res) {
   return true;
 }
 
-/**
- * Resolve viewer username from the signed X-Viewer-User token.
- * Returns the verified username (possibly empty string for "anonymous" shared-only),
- * or null if the token is present-but-invalid (which we treat as a hard 401).
- */
 function resolveViewerUser(req, res) {
   const header = req.headers['x-viewer-user'];
-  if (header === undefined) {
-    // No token at all — treat as anonymous (shared mailbox only).
-    return '';
-  }
+  if (header === undefined) return '';
   if (typeof header !== 'string' || header === '') return '';
   const user = verifyViewerToken(header);
   if (user === null) {
@@ -43,24 +35,48 @@ router.get('/messages', async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, parseInt(req.query.limit) || 50);
   const offset = (page - 1) * limit;
+  const tag = req.query.tag || null; // optional tag filter
 
   if (!canAccessMailbox(requestedMailbox, viewerUser)) {
     return res.status(403).json({ error: 'forbidden' });
   }
 
   try {
-    const { rows } = await pool.query(
-      `SELECT id, message_id, subject, from_addr, to_addrs, received_at, mailbox
-       FROM messages
-       WHERE mailbox = $1
-       ORDER BY received_at DESC
-       LIMIT $2 OFFSET $3`,
-      [requestedMailbox, limit, offset]
-    );
-    const { rows: countRows } = await pool.query(
-      'SELECT COUNT(*) AS total FROM messages WHERE mailbox = $1',
-      [requestedMailbox]
-    );
+    let query, params;
+    if (tag) {
+      query = `SELECT m.id, m.message_id, m.subject, m.from_addr, m.to_addrs, m.received_at, m.mailbox,
+               COALESCE(json_agg(mt.tag ORDER BY mt.tag) FILTER (WHERE mt.tag IS NOT NULL), '[]') as tags
+               FROM messages m
+               LEFT JOIN message_tags mt ON mt.message_id = m.id
+               WHERE m.mailbox = $1 AND EXISTS (
+                 SELECT 1 FROM message_tags WHERE message_id = m.id AND tag = $4
+               )
+               GROUP BY m.id
+               ORDER BY m.received_at DESC
+               LIMIT $2 OFFSET $3`;
+      params = [requestedMailbox, limit, offset, tag];
+    } else {
+      query = `SELECT m.id, m.message_id, m.subject, m.from_addr, m.to_addrs, m.received_at, m.mailbox,
+               COALESCE(json_agg(mt.tag ORDER BY mt.tag) FILTER (WHERE mt.tag IS NOT NULL), '[]') as tags
+               FROM messages m
+               LEFT JOIN message_tags mt ON mt.message_id = m.id
+               WHERE m.mailbox = $1
+               GROUP BY m.id
+               ORDER BY m.received_at DESC
+               LIMIT $2 OFFSET $3`;
+      params = [requestedMailbox, limit, offset];
+    }
+
+    const { rows } = await pool.query(query, params);
+
+    const countQuery = tag
+      ? `SELECT COUNT(DISTINCT m.id) AS total FROM messages m
+         JOIN message_tags mt ON mt.message_id = m.id
+         WHERE m.mailbox = $1 AND mt.tag = $2`
+      : `SELECT COUNT(*) AS total FROM messages WHERE mailbox = $1`;
+    const countParams = tag ? [requestedMailbox, tag] : [requestedMailbox];
+    const { rows: countRows } = await pool.query(countQuery, countParams);
+
     res.json({ messages: rows, total: parseInt(countRows[0].total), page, limit });
   } catch (err) {
     console.error(err);
@@ -74,22 +90,23 @@ router.get('/messages/:id', async (req, res) => {
   if (viewerUser === null) return;
 
   const id = parseMessageId(req.params.id);
-  if (id === null) {
-    return res.status(400).json({ error: 'invalid id' });
-  }
+  if (id === null) return res.status(400).json({ error: 'invalid id' });
 
   try {
-    const { rows } = await pool.query(
-      'SELECT * FROM messages WHERE id = $1',
-      [id]
-    );
+    const { rows } = await pool.query('SELECT * FROM messages WHERE id = $1', [id]);
     if (!rows.length) return res.status(404).json({ error: 'not found' });
 
     const msg = rows[0];
     if (!canReadMessage(msg.mailbox, viewerUser)) {
-      // 404 not 403 — don't leak existence of messages outside the viewer's scope
       return res.status(404).json({ error: 'not found' });
     }
+
+    // Attach tags
+    const { rows: tagRows } = await pool.query(
+      'SELECT tag, source FROM message_tags WHERE message_id = $1 ORDER BY tag',
+      [id]
+    );
+    msg.tags = tagRows.map(r => r.tag);
 
     res.json(msg);
   } catch (err) {

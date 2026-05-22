@@ -13,6 +13,7 @@ export interface MailMessage {
   html_body: string | null;
   attachments_meta: { filename: string; contentType: string; size: number }[];
   mailbox: string;
+  tags?: string[];
 }
 
 export interface MessageState {
@@ -23,7 +24,7 @@ export interface MessageState {
 export type StateMap = Record<string, MessageState>;
 
 export interface MessagesResponse {
-  messages: Omit<MailMessage, 'text_body' | 'html_body'>[];
+  messages: (Omit<MailMessage, 'text_body' | 'html_body'> & { tags: string[] })[];
   total: number;
   page: number;
   limit: number;
@@ -39,11 +40,6 @@ export class MailStoreError extends Error {
   }
 }
 
-/**
- * Mint a short-lived HMAC-signed viewer token. The mail-store verifies the
- * HMAC before trusting the username — so even a bug in this process that
- * lets a request control its own username gets caught.
- */
 function mintViewerToken(user: string): string {
   const payload = { user, exp: Math.floor(Date.now() / 1000) + TTL_SECONDS };
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -66,9 +62,11 @@ export async function fetchMessages(
   mailbox: string,
   viewerUser: string,
   page = 1,
-  limit = 50
+  limit = 50,
+  tag?: string
 ): Promise<MessagesResponse> {
-  const qs = `?mailbox=${encodeURIComponent(mailbox)}&page=${page}&limit=${limit}`;
+  let qs = `?mailbox=${encodeURIComponent(mailbox)}&page=${page}&limit=${limit}`;
+  if (tag) qs += `&tag=${encodeURIComponent(tag)}`;
   const resp = await callStoreAs(`/messages${qs}`, viewerUser);
   if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
   return resp.json();

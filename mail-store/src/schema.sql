@@ -30,3 +30,14 @@ CREATE TABLE IF NOT EXISTS message_state (
 
 CREATE INDEX IF NOT EXISTS idx_message_state_username
   ON message_state (username);
+
+-- Tags: per-message AI-generated or user-applied labels
+CREATE TABLE IF NOT EXISTS message_tags (
+  message_id BIGINT      NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  tag        VARCHAR(32) NOT NULL,
+  source     VARCHAR(16) NOT NULL DEFAULT 'ai', -- 'ai' | 'user'
+  PRIMARY KEY (message_id, tag)
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_tags_message_id ON message_tags (message_id);
+CREATE INDEX IF NOT EXISTS idx_message_tags_tag ON message_tags (tag);
