@@ -20,6 +20,20 @@ import { join } from 'node:path';
 
 export const AI_MODEL = 'claude-haiku-4-5';
 
+// Well-known locations for the Claude CLI binary, in priority order.
+// The Dockerfile copies the linux-x64 binary to /usr/local/bin/claude so
+// it survives next build --standalone (which doesn't carry native binaries).
+const CLAUDE_BINARY_CANDIDATES = [
+  '/usr/local/bin/claude',
+  join(homedir(), '.local', 'bin', 'claude'),
+];
+
+function findClaudeBinary(): string | undefined {
+  return CLAUDE_BINARY_CANDIDATES.find((p) => {
+    try { return existsSync(p); } catch { return false; }
+  });
+}
+
 type Role = 'user' | 'assistant';
 interface MessagesCreateInput {
   model?: string;
@@ -45,6 +59,7 @@ function credsAvailable(): boolean {
     join(homedir(), '.claude', '.credentials.json'),
     '/home/node/.claude/.credentials.json',
     '/root/.claude/.credentials.json',
+    '/home/nextjs/.claude/.credentials.json',
   ];
   _available = candidates.some((p) => {
     try { return existsSync(p); } catch { return false; }
@@ -66,6 +81,7 @@ function transcriptFromMessages(messages: MessagesCreateInput['messages']): stri
 
 async function runQuery(model: string, prompt: string): Promise<string> {
   let text = '';
+  const claudeBinary = findClaudeBinary();
   // bypassPermissions + allowDangerouslySkipPermissions is the pattern lib/claude.js
   // uses in the bots repo. The mail viewer has no tools to permit anyway — it's
   // a single-turn LLM call with no MCP servers wired in.
@@ -77,6 +93,9 @@ async function runQuery(model: string, prompt: string): Promise<string> {
       allowDangerouslySkipPermissions: true,
       // Explicitly empty allowlist + no MCP — the AI surfaces don't use tools.
       allowedTools: [],
+      // Point explicitly at the binary so the SDK doesn't fall back to searching
+      // node_modules (which don't survive next build --standalone).
+      ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
     },
   });
   for await (const msg of result) {
