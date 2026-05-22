@@ -24,6 +24,13 @@ RUN mkdir -p /home/nextjs/.claude && chown -R nextjs:nodejs /home/nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Copy the claude-agent-sdk native binary so AI features work in standalone mode.
+# pnpm install puts it in the optional platform package; next build --standalone
+# doesn't carry native binaries forward automatically.
+COPY --from=deps --chown=root:root \
+  /app/node_modules/.pnpm/@anthropic-ai+claude-agent-sdk-linux-x64@0.3.147/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude \
+  /usr/local/bin/claude
+RUN chmod +x /usr/local/bin/claude
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
