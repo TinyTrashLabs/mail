@@ -4,7 +4,6 @@ import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
 
 const FROM_DOMAIN = process.env.RESEND_FROM_DOMAIN || 'tinytrashlabs.com';
-const PERSONAL = new Set(['david', 'shane', 'derek', 'ryan']);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MSGID_SAFE_RE = /^[^\r\n\x00]*$/;
 
@@ -19,8 +18,8 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const username = (session as { username?: string }).username ?? '';
-  if (!PERSONAL.has(username)) {
-    return NextResponse.json({ error: 'forbidden: not a personal mailbox user' }, { status: 403 });
+  if (!username) {
+    return NextResponse.json({ error: 'forbidden: no username in session' }, { status: 403 });
   }
 
   if (!process.env.RESEND_API_KEY) {
