@@ -53,10 +53,26 @@ services:
       VIEWER_SECRET: ${VIEWER_SECRET}
       RESEND_API_KEY: ${RESEND_API_KEY}
       RESEND_FROM_DOMAIN: ${RESEND_FROM_DOMAIN:-tinytrashlabs.com}
-      # Optional: enables AI features (summarize, draft assist, smart search)
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # AI features (summarize, draft assist, smart search) authenticate via the
+    # shared Claude OAuth credentials volume the personas stack uses. The viewer
+    # runs as user `nextjs` (uid 1001), so we mount the volume at that user's
+    # ~/.claude — @anthropic-ai/claude-agent-sdk's query() resolves credentials
+    # from os.homedir()/.claude/.credentials.json, no API key needed.
+    # Mounted RW (not RO) because the agent SDK refreshes the OAuth token
+    # in-place and would silently fail otherwise. The personas stack mounts
+    # this same volume RW; this just matches that contract.
+    volumes:
+      - claude-creds:/home/nextjs/.claude
     ports:
       - "3026:3000"
 
 volumes:
   mail-store-db-data:
+  # External: provisioned by the claude-personas-server compose stack.
+  # Mounted RW into the viewer because @anthropic-ai/claude-agent-sdk refreshes
+  # the OAuth token in-place; a RO mount would silently fail when the token
+  # rotates. Personas stack mounts this same volume RW for the same reason —
+  # token refresh is cooperative, last writer wins on rotation.
+  claude-creds:
+    external: true
+    name: claude-personas-server_claude-creds
