@@ -1,21 +1,22 @@
 'use client';
 
 /**
- * InboxClient — Gmail-style two-pane layout.
- * Left: message list. Right: reading pane (loaded via ?msg=<id> URL state).
- * Keyboard: j/k navigate, Enter open in pane, o open full page, s star,
- *           r reply, / search, ? help, Escape close pane.
+ * InboxClient — Gmail-style two-pane layout with right-click context menus,
+ * bottom compose tray, AI auto-tag, and per-row add-tag dialog.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Paperclip, Star, Search, X, HelpCircle, Reply, Forward,
-  Tag, ArrowLeft, ExternalLink,
+  Tag, ArrowLeft, ExternalLink, Sparkles,
 } from 'lucide-react';
 import { AISummary } from '@/components/AISummary';
 import { MessageActions } from '@/components/MessageActions';
+import { ComposeTray, ComposeInit } from '@/components/ComposeTray';
+import { MessageContextMenu, ContextMenuPos } from '@/components/MessageContextMenu';
+import { AddTagDialog } from '@/components/AddTagDialog';
 
 interface Message {
   id: number;
@@ -54,6 +55,8 @@ interface InboxClientProps {
   selectedSafeHtml: string | null;
   bodyForAI: string;
   username: string;
+  fullName: string;
+  composeOpen: boolean;
 }
 
 function formatDate(iso: string) {
@@ -114,6 +117,8 @@ export function InboxClient({
   selectedSafeHtml,
   bodyForAI,
   username,
+  fullName,
+  composeOpen,
 }: InboxClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -127,12 +132,35 @@ export function InboxClient({
   const searchRef = useRef<HTMLInputElement>(null);
   const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
+  // Context menu state
+  const [ctxMenu, setCtxMenu] = useState<{ pos: ContextMenuPos; msgId: number } | null>(null);
+  // Add-tag dialog state
+  const [addTagFor, setAddTagFor] = useState<{ msgId: number; existing: string[] } | null>(null);
+  // Compose tray init payload (changes when reply/forward opened)
+  const [composeInit, setComposeInit] = useState<ComposeInit>({});
+  // Local copy of tags-per-message (lets us update in place after auto-tag/add)
+  const [tagsByMsg, setTagsByMsg] = useState<Record<string, string[]>>(() => {
+    const out: Record<string, string[]> = {};
+    for (const m of messages) out[String(m.id)] = m.tags ?? [];
+    if (selectedMsg) out[String(selectedMsg.id)] = selectedMsg.tags ?? [];
+    return out;
+  });
+
+  // Suppress unused-var warnings for props consumed indirectly via display name.
+  void total;
+  void fullName;
+
   const getState = useCallback(
     (id: number): MessageState => states[String(id)] ?? { is_read: false, is_starred: false },
     [states]
   );
 
-  const filtered = messages.filter((msg) => {
+  const getTags = useCallback(
+    (id: number): string[] => tagsByMsg[String(id)] ?? [],
+    [tagsByMsg]
+  );
+
+  const filtered = useMemo(() => messages.filter((msg) => {
     if (viewMode === 'unread' && getState(msg.id).is_read) return false;
     if (viewMode === 'starred' && !getState(msg.id).is_starred) return false;
     if (searchQuery) {
@@ -140,24 +168,25 @@ export function InboxClient({
       return msg.subject.toLowerCase().includes(q) || msg.from_addr.toLowerCase().includes(q);
     }
     return true;
-  });
+  }), [messages, viewMode, searchQuery, getState]);
 
-  const threadMap = new Map<string, number>();
-  for (const msg of filtered) threadMap.set(threadKey(msg), (threadMap.get(threadKey(msg)) ?? 0) + 1);
-  const seenThreads = new Set<string>();
-  const threaded = filtered.map((msg) => {
-    const key = threadKey(msg);
-    const count = threadMap.get(key) ?? 1;
-    const isHead = !seenThreads.has(key);
-    if (isHead) seenThreads.add(key);
-    return { msg, threadCount: count, isThreadHead: isHead };
-  });
+  const threaded = useMemo(() => {
+    const threadMap = new Map<string, number>();
+    for (const msg of filtered) threadMap.set(threadKey(msg), (threadMap.get(threadKey(msg)) ?? 0) + 1);
+    const seenThreads = new Set<string>();
+    return filtered.map((msg) => {
+      const key = threadKey(msg);
+      const count = threadMap.get(key) ?? 1;
+      const isHead = !seenThreads.has(key);
+      if (isHead) seenThreads.add(key);
+      return { msg, threadCount: count, isThreadHead: isHead };
+    });
+  }, [filtered]);
 
   const openMessage = useCallback((id: number) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('msg', String(id));
     startTransition(() => { router.push(`/inbox?${params.toString()}`, { scroll: false }); });
-    // Mark read optimistically
     setStates(prev => ({
       ...prev,
       [String(id)]: { ...(prev[String(id)] ?? { is_read: false, is_starred: false }), is_read: true },
@@ -192,6 +221,82 @@ export function InboxClient({
     patchState(id, { is_starred: !getState(id).is_starred });
   }, [getState, patchState]);
 
+  // Compose URL state machine
+  const openCompose = useCallback((init: ComposeInit = {}) => {
+    setComposeInit(init);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('compose', '1');
+    startTransition(() => { router.push(`/inbox?${params.toString()}`, { scroll: false }); });
+  }, [router, searchParams]);
+
+  const closeCompose = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('compose');
+    startTransition(() => { router.push(`/inbox?${params.toString()}`, { scroll: false }); });
+  }, [router, searchParams]);
+
+  // Helpers to build reply/forward init from any Message (need full payload for full reply)
+  const buildReplyInit = useCallback(async (msgId: number): Promise<ComposeInit> => {
+    try {
+      const res = await fetch(`/api/messages/${msgId}?mailbox=${encodeURIComponent(mailbox)}`);
+      if (!res.ok) return {};
+      const m = await res.json();
+      return {
+        to: m.from_addr,
+        subject: `Re: ${m.subject.replace(/^re:\s*/i, '')}`,
+        inReplyTo: m.message_id || '',
+      };
+    } catch {
+      return {};
+    }
+  }, [mailbox]);
+
+  const buildForwardInit = useCallback(async (msgId: number): Promise<ComposeInit> => {
+    try {
+      const res = await fetch(`/api/messages/${msgId}?mailbox=${encodeURIComponent(mailbox)}`);
+      if (!res.ok) return {};
+      const m = await res.json();
+      return {
+        subject: `Fwd: ${m.subject.replace(/^fwd?:\s*/i, '')}`,
+        body: `\n\n--- Forwarded ---\nFrom: ${m.from_addr}\nDate: ${m.received_at}\nSubject: ${m.subject}\n\n${m.text_body || ''}`,
+      };
+    } catch {
+      return {};
+    }
+  }, [mailbox]);
+
+  // Auto-tag via AI
+  const autoTag = useCallback(async (msgId: number) => {
+    try {
+      const detail = await fetch(`/api/messages/${msgId}?mailbox=${encodeURIComponent(mailbox)}`).then(r => r.ok ? r.json() : null);
+      if (!detail) return;
+      const res = await fetch('/api/ai/auto-tag', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: detail.subject,
+          from: detail.from_addr,
+          body: detail.text_body || '',
+          existingTags: getTags(msgId),
+        }),
+      });
+      if (!res.ok) return;
+      const { tags } = await res.json();
+      if (!Array.isArray(tags) || tags.length === 0) return;
+      // Apply tags
+      const applyRes = await fetch(`/api/messages/${msgId}/tags`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags, source: 'ai' }),
+      });
+      if (applyRes.ok) {
+        setTagsByMsg(prev => {
+          const cur = new Set(prev[String(msgId)] ?? []);
+          for (const t of tags) cur.add(t);
+          return { ...prev, [String(msgId)]: Array.from(cur) };
+        });
+      }
+    } catch { /* swallow */ }
+  }, [mailbox, getTags]);
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -214,29 +319,97 @@ export function InboxClient({
           break;
         case 'r':
           if (selectedMsg) {
-            router.push(`/compose?replyTo=${encodeURIComponent(selectedMsg.from_addr)}&subject=${encodeURIComponent(`Re: ${selectedMsg.subject}`)}&inReplyTo=${encodeURIComponent(selectedMsg.message_id || '')}`);
+            openCompose({
+              to: selectedMsg.from_addr,
+              subject: `Re: ${selectedMsg.subject.replace(/^re:\s*/i, '')}`,
+              inReplyTo: selectedMsg.message_id || '',
+            });
           }
           break;
+        case 'c': openCompose({}); break;
         case '/': e.preventDefault(); searchRef.current?.focus(); break;
         case '?': setShowHelp(v => !v); break;
         case 'Escape':
-          if (selectedMsgId) closePane();
+          if (ctxMenu) setCtxMenu(null);
+          else if (addTagFor) setAddTagFor(null);
+          else if (selectedMsgId) closePane();
           else { setShowHelp(false); setFocusedIdx(-1); }
           break;
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [focusedIdx, threaded, getState, patchState, openMessage, closePane, selectedMsg, selectedMsgId, router]);
+  }, [focusedIdx, threaded, getState, patchState, openMessage, closePane, selectedMsg, selectedMsgId, ctxMenu, addTagFor, openCompose]);
+
+  // Listen for sidebar "open shortcuts" custom event
+  useEffect(() => {
+    const onOpenHelp = () => setShowHelp(true);
+    window.addEventListener('mail:open-shortcuts', onOpenHelp as EventListener);
+    return () => window.removeEventListener('mail:open-shortcuts', onOpenHelp as EventListener);
+  }, []);
 
   useEffect(() => {
     if (focusedIdx >= 0) rowRefs.current[focusedIdx]?.scrollIntoView({ block: 'nearest' });
   }, [focusedIdx]);
 
   const unreadCount = messages.filter(m => !getState(m.id).is_read).length;
-  const replyHref = selectedMsg
-    ? `/compose?replyTo=${encodeURIComponent(selectedMsg.from_addr)}&subject=${encodeURIComponent(`Re: ${selectedMsg.subject}`)}&inReplyTo=${encodeURIComponent(selectedMsg.message_id || '')}`
-    : '#';
+
+  // Reply action handler for reading-pane buttons (now opens tray instead of /compose)
+  const onReplyFromPane = useCallback(() => {
+    if (!selectedMsg) return;
+    openCompose({
+      to: selectedMsg.from_addr,
+      subject: `Re: ${selectedMsg.subject.replace(/^re:\s*/i, '')}`,
+      inReplyTo: selectedMsg.message_id || '',
+    });
+  }, [selectedMsg, openCompose]);
+
+  const onForwardFromPane = useCallback(() => {
+    if (!selectedMsg) return;
+    openCompose({
+      subject: `Fwd: ${selectedMsg.subject.replace(/^fwd?:\s*/i, '')}`,
+      body: `\n\n--- Forwarded ---\nFrom: ${selectedMsg.from_addr}\nDate: ${selectedMsg.received_at}\nSubject: ${selectedMsg.subject}\n\n${selectedMsg.text_body || ''}`,
+    });
+  }, [selectedMsg, openCompose]);
+
+  // Context menu actions builder
+  const buildMenuActions = useCallback((msgId: number) => {
+    return {
+      onOpenInPane: () => { openMessage(msgId); setCtxMenu(null); },
+      onOpenFullPage: () => {
+        router.push(`/inbox/${msgId}?mailbox=${mailbox}`);
+        setCtxMenu(null);
+      },
+      onReply: async () => {
+        setCtxMenu(null);
+        const init = await buildReplyInit(msgId);
+        openCompose(init);
+      },
+      onForward: async () => {
+        setCtxMenu(null);
+        const init = await buildForwardInit(msgId);
+        openCompose(init);
+      },
+      onToggleStar: () => {
+        patchState(msgId, { is_starred: !getState(msgId).is_starred });
+        setCtxMenu(null);
+      },
+      onToggleRead: () => {
+        patchState(msgId, { is_read: !getState(msgId).is_read });
+        setCtxMenu(null);
+      },
+      onAddTag: () => {
+        setAddTagFor({ msgId, existing: getTags(msgId) });
+        setCtxMenu(null);
+      },
+      onAutoTag: () => {
+        setCtxMenu(null);
+        autoTag(msgId);
+      },
+      isStarred: getState(msgId).is_starred,
+      isRead: getState(msgId).is_read,
+    };
+  }, [openMessage, router, mailbox, buildReplyInit, buildForwardInit, openCompose, patchState, getState, getTags, autoTag]);
 
   return (
     <div className="flex-1 flex overflow-hidden min-h-0">
@@ -289,22 +462,24 @@ export function InboxClient({
           )}
           {threaded.map(({ msg, threadCount, isThreadHead }, idx) => {
             const state = getState(msg.id);
+            const rowTags = getTags(msg.id);
             const isFocused = focusedIdx === idx;
             const isSelected = selectedMsgId === msg.id;
             return (
               <button key={msg.id}
                 ref={el => { rowRefs.current[idx] = el; }}
                 onClick={() => openMessage(msg.id)}
+                onContextMenu={e => {
+                  e.preventDefault();
+                  setCtxMenu({ pos: { x: e.clientX, y: e.clientY }, msgId: msg.id });
+                }}
                 className={`w-full text-left flex items-start gap-2 px-3 py-2.5 transition-colors group ${isSelected ? 'bg-teal/10 border-l-2 border-teal' : isFocused ? 'bg-[#f0ede4]' : 'hover:bg-[#f0ede4]'}`}>
-                {/* Unread dot */}
                 <div className="flex-shrink-0 mt-1.5 w-1.5 h-1.5">
                   {!state.is_read && <div className="w-1.5 h-1.5 rounded-full bg-teal-strong" />}
                 </div>
-                {/* Avatar */}
                 <div className={`w-7 h-7 rounded-full ${avatarColor(msg.from_addr)} flex items-center justify-center text-xs font-bold text-cream flex-shrink-0`}>
                   {avatarInitial(msg.from_addr)}
                 </div>
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
                     <span className={`text-xs truncate ${state.is_read ? 'text-ink-soft' : 'text-ink font-semibold'}`}>
@@ -318,16 +493,14 @@ export function InboxClient({
                       <span className="ml-1 text-ink-soft">({threadCount})</span>
                     )}
                   </div>
-                  {/* Tags row */}
-                  {(msg.tags?.length ?? 0) > 0 && (
+                  {rowTags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {msg.tags!.map(t => (
+                      {rowTags.map(t => (
                         <span key={t} className={`text-[10px] px-1.5 py-0.5 rounded font-sans ${tagColor(t)}`}>{t}</span>
                       ))}
                     </div>
                   )}
                 </div>
-                {/* Icons */}
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <button onClick={e => toggleStar(e, msg.id)} className="focus:outline-none">
                     <Star size={12} strokeWidth={1.5} className={state.is_starred ? 'fill-[#d8a14a] text-[#d8a14a]' : 'text-rule group-hover:text-ink-soft'} />
@@ -358,7 +531,6 @@ export function InboxClient({
       {/* ── RIGHT PANE: reading pane ── */}
       {selectedMsgId && selectedMsg ? (
         <div className="flex-1 flex flex-col overflow-hidden bg-cream min-w-0">
-          {/* Pane toolbar */}
           <div className="flex items-center gap-2 px-4 py-3 border-b border-rule bg-cream flex-shrink-0">
             <button onClick={closePane} className="flex items-center gap-1 text-xs font-sans text-ink-soft hover:text-ink transition-colors">
               <ArrowLeft size={13} strokeWidth={1.75} />
@@ -367,15 +539,22 @@ export function InboxClient({
               messageId={selectedMsg.id}
               initialStarred={states[String(selectedMsg.id)]?.is_starred ?? false}
               initialRead={states[String(selectedMsg.id)]?.is_read ?? true}
-              replyHref={replyHref}
+              replyHref="#"
               backHref={`/inbox?mailbox=${mailbox}`}
             />
             <div className="flex-1" />
-            {/* Tags on selected message */}
-            {(selectedMsg.tags?.length ?? 0) > 0 && (
+            <button onClick={() => autoTag(selectedMsg.id)}
+              className="flex items-center gap-1 text-xs font-sans text-ink-soft hover:text-teal-strong transition-colors"
+              title="AI auto-tag this message">
+              <Sparkles size={12} strokeWidth={1.75} /> auto-tag
+            </button>
+            <button onClick={() => setAddTagFor({ msgId: selectedMsg.id, existing: getTags(selectedMsg.id) })}
+              className="flex items-center gap-1 text-xs font-sans text-ink-soft hover:text-ink transition-colors">
+              <Tag size={12} strokeWidth={1.75} /> add tag
+            </button>
+            {getTags(selectedMsg.id).length > 0 && (
               <div className="flex items-center gap-1">
-                <Tag size={12} strokeWidth={1.75} className="text-ink-soft" />
-                {selectedMsg.tags!.map(t => (
+                {getTags(selectedMsg.id).map(t => (
                   <span key={t} className={`text-[10px] px-1.5 py-0.5 rounded font-sans ${tagColor(t)}`}>{t}</span>
                 ))}
               </div>
@@ -385,7 +564,6 @@ export function InboxClient({
             </Link>
           </div>
 
-          {/* Message content */}
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-3xl mx-auto px-6 py-6">
               <h1 className="text-lg font-serif font-semibold text-ink mb-4 leading-snug">{selectedMsg.subject}</h1>
@@ -394,7 +572,6 @@ export function InboxClient({
                 <AISummary messageId={selectedMsg.id} subject={selectedMsg.subject} from={selectedMsg.from_addr} body={bodyForAI} />
               )}
 
-              {/* Header card */}
               <div className="bg-[#f0ede4] rounded-card p-3 mb-4">
                 <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 text-xs font-sans">
                   <dt className="font-medium text-ink-soft">From</dt>
@@ -412,7 +589,6 @@ export function InboxClient({
                 </dl>
               </div>
 
-              {/* Body */}
               <div className="border-t border-rule pt-4 text-sm">
                 {selectedSafeHtml ? (
                   <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: selectedSafeHtml }} />
@@ -423,7 +599,6 @@ export function InboxClient({
                 )}
               </div>
 
-              {/* Attachments */}
               {(selectedMsg.attachments_meta?.length ?? 0) > 0 && (
                 <div className="mt-6 border-t border-rule pt-4">
                   <div className="flex items-center gap-1.5 text-xs font-sans font-semibold text-ink-soft uppercase tracking-wider mb-2">
@@ -442,31 +617,57 @@ export function InboxClient({
                 </div>
               )}
 
-              {/* Reply / Forward */}
               <div className="mt-6 pt-4 border-t border-rule flex gap-2">
-                <Link href={replyHref}
+                <button onClick={onReplyFromPane}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-teal hover:bg-teal-strong text-cream rounded-card text-xs font-sans font-medium transition-colors">
                   <Reply size={12} strokeWidth={2} /> Reply
-                </Link>
-                <Link href={`/compose?subject=${encodeURIComponent(`Fwd: ${selectedMsg.subject}`)}`}
+                </button>
+                <button onClick={onForwardFromPane}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-rule hover:bg-[#d8d4cb] text-ink rounded-card text-xs font-sans transition-colors">
                   <Forward size={12} strokeWidth={2} /> Forward
-                </Link>
+                </button>
               </div>
             </div>
           </div>
         </div>
       ) : !selectedMsgId ? null : (
-        /* selected ID but message not found */
         <div className="flex-1 flex items-center justify-center text-ink-soft text-sm font-sans">
           Message not found.
         </div>
       )}
 
-      {/* Empty state when no message selected */}
       {!selectedMsgId && messages.length > 0 && (
-        <div className="hidden" /> /* no empty pane shown — full-width list */
+        <div className="hidden" />
       )}
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <MessageContextMenu
+          pos={ctxMenu.pos}
+          actions={buildMenuActions(ctxMenu.msgId)}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+
+      {/* Add-tag dialog */}
+      {addTagFor && (
+        <AddTagDialog
+          messageId={addTagFor.msgId}
+          existingTags={addTagFor.existing}
+          onClose={() => setAddTagFor(null)}
+          onAdded={(tags) => {
+            setTagsByMsg(prev => {
+              const cur = new Set(prev[String(addTagFor.msgId)] ?? []);
+              for (const t of tags) cur.add(t);
+              return { ...prev, [String(addTagFor.msgId)]: Array.from(cur) };
+            });
+            setAddTagFor(null);
+          }}
+        />
+      )}
+
+      {/* Compose tray */}
+      <ComposeTray open={composeOpen} init={composeInit} onClose={closeCompose} />
 
       {/* Help modal */}
       {showHelp && (
@@ -477,7 +678,7 @@ export function InboxClient({
               <button onClick={() => setShowHelp(false)} className="text-ink-soft hover:text-ink"><X size={16} strokeWidth={2} /></button>
             </div>
             <dl className="grid grid-cols-[3.5rem_1fr] gap-x-4 gap-y-2 text-sm font-sans">
-              {[['j / k','Navigate'], ['Enter','Open in pane'], ['s','Star selected'], ['r','Reply (pane)'], ['/','Search'], ['Esc','Close pane'], ['?','This help']].map(([k, d]) => (
+              {[['j / k','Navigate'], ['Enter','Open in pane'], ['s','Star selected'], ['r','Reply'], ['c','Compose'], ['/','Search'], ['right-click','Row menu'], ['Esc','Close'], ['?','This help']].map(([k, d]) => (
                 <Fragment key={k}>
                   <dt className="font-mono text-teal-strong font-medium">{k}</dt>
                   <dd className="text-ink-soft">{d}</dd>

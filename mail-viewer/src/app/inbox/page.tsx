@@ -1,6 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { fetchMessages, fetchMessageStates, fetchMessage } from '@/lib/mail-store';
+import { resolveMailbox } from '@/lib/mailbox';
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
 import { AISearchBar } from '@/components/AISearchBar';
@@ -13,13 +14,26 @@ import { PenSquare } from 'lucide-react';
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: { mailbox?: string; page?: string; msg?: string; tag?: string };
+  searchParams: { mailbox?: string; page?: string; msg?: string; tag?: string; compose?: string };
 }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect('/api/auth/signin');
 
   const username = (session as { username?: string }).username ?? '';
-  const mailbox = searchParams.mailbox || username || 'shared';
+  const fullName = (session as { user?: { name?: string } }).user?.name ?? username;
+  const requestedMailbox = searchParams.mailbox;
+  const mailbox = resolveMailbox(requestedMailbox, username);
+  // If the URL had an invalid mailbox, redirect to the canonical one so
+  // ?mailbox=david for shane doesn't silently render an empty list — it
+  // bounces back to shane's own inbox with the URL updated.
+  if (requestedMailbox && requestedMailbox !== mailbox) {
+    const params = new URLSearchParams();
+    params.set('mailbox', mailbox);
+    if (searchParams.tag) params.set('tag', searchParams.tag);
+    if (searchParams.msg) params.set('msg', searchParams.msg);
+    if (searchParams.compose) params.set('compose', searchParams.compose);
+    redirect(`/inbox?${params.toString()}`);
+  }
   const page = parseInt(searchParams.page || '1');
   const tag = searchParams.tag || undefined;
 
@@ -77,13 +91,13 @@ export default async function InboxPage({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar username={username} mailbox={mailbox} tag={tag} />
+      <Sidebar username={username} fullName={fullName} mailbox={mailbox} tag={tag} />
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Mobile top bar — hidden on sm+ screens where the sidebar is visible */}
         <div className="sm:hidden flex items-center justify-between px-4 py-3 border-b border-rule bg-[#f0ede4] flex-shrink-0">
           <span className="text-sm font-serif font-semibold text-ink">TTL Mail</span>
-          <Link href="/compose"
+          <Link href={`/inbox?mailbox=${mailbox}&compose=1`}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-teal hover:bg-teal-strong text-cream rounded-card text-xs font-sans font-medium transition-colors">
             <PenSquare size={12} strokeWidth={2} />
             Compose
@@ -106,6 +120,8 @@ export default async function InboxPage({
           selectedSafeHtml={selectedSafeHtml}
           bodyForAI={bodyForAI}
           username={username}
+          fullName={fullName}
+          composeOpen={Boolean(searchParams.compose)}
         />
       </main>
     </div>

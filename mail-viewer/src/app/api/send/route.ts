@@ -2,6 +2,25 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
+import sanitizeHtml from 'sanitize-html';
+
+// Sanitize outbound HTML. Strips script/style/onevent attributes etc.
+// Keeps common formatting/styling that compose tray actually emits.
+function safeOutboundHtml(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+      'img', 'h1', 'h2', 'h3', 'span', 'u', 's',
+    ]),
+    allowedAttributes: {
+      ...sanitizeHtml.defaults.allowedAttributes,
+      '*': ['style', 'class'],
+      a: ['href', 'name', 'target', 'rel'],
+      img: ['src', 'alt', 'title', 'width', 'height'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    disallowedTagsMode: 'discard',
+  });
+}
 
 const FROM_DOMAIN = process.env.RESEND_FROM_DOMAIN || 'tinytrashlabs.com';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -101,7 +120,7 @@ export async function POST(req: NextRequest) {
     ...(bcc.length ? { bcc } : {}),
     subject,
     text: bodyText,
-    ...(bodyHtml ? { html: bodyHtml } : {}),
+    ...(bodyHtml ? { html: safeOutboundHtml(bodyHtml) } : {}),
     ...(Object.keys(extraHeaders).length ? { headers: extraHeaders } : {}),
     ...(attachmentFiles.length ? {
       attachments: attachmentFiles.map(f => ({

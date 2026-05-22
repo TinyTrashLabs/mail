@@ -1,10 +1,10 @@
-FROM node:22-alpine AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 RUN npm install -g pnpm@9.5.0
 COPY package.json pnpm-lock.yaml* ./
 RUN pnpm install --frozen-lockfile
 
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 RUN npm install -g pnpm@9.5.0
 COPY --from=deps /app/node_modules ./node_modules
@@ -12,11 +12,14 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
-FROM node:22-alpine AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 --home /home/nextjs --shell /bin/sh nextjs
+# Native Claude binary is glibc-linked. We deliberately use debian-slim
+# (not alpine) so it can actually launch — gcompat shims on Alpine don't
+# cover the full set of relocations the binary needs (relocation type 37).
+RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs --home-dir /home/nextjs --shell /bin/sh --create-home nextjs
 # Pre-create the mount point so the claude-creds volume bind has somewhere to land
 # regardless of mount order. The mail viewer uses ~/.claude/.credentials.json for
 # AI-feature OAuth (see lib/ai.ts) — the personas stack owns this volume.
