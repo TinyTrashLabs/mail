@@ -23,10 +23,15 @@ export const authOptions: NextAuthOptions = {
         token_endpoint_auth_method: 'client_secret_post',
       },
       profile(profile) {
+        // Prefer real name when MM has one; otherwise fall back to username.
+        const first = (profile.first_name ?? "").trim();
+        const last = (profile.last_name ?? "").trim();
+        const display = (first || last) ? `${first} ${last}`.trim() : (profile.nickname || profile.username);
         return {
           id: profile.id,
-          name: profile.username,
+          name: display,
           email: profile.email,
+          username: profile.username,
           image: null,
         };
       },
