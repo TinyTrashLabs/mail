@@ -13,7 +13,7 @@ import { PenSquare } from 'lucide-react';
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: { mailbox?: string; page?: string; msg?: string; tag?: string };
+  searchParams: { mailbox?: string; page?: string; msg?: string; tag?: string; trash?: string };
 }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect('/api/auth/signin');
@@ -22,8 +22,9 @@ export default async function InboxPage({
   const mailbox = searchParams.mailbox || username || 'shared';
   const page = parseInt(searchParams.page || '1');
   const tag = searchParams.tag || undefined;
+  const trashOnly = searchParams.trash === '1' || searchParams.trash === 'true';
 
-  const data = await fetchMessages(mailbox, username, page, 50, tag).catch(() => ({
+  const data = await fetchMessages(mailbox, username, page, 50, tag, { trashOnly }).catch(() => ({
     messages: [], total: 0, page: 1, limit: 50,
   }));
 
@@ -77,7 +78,7 @@ export default async function InboxPage({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar username={username} mailbox={mailbox} tag={tag} />
+      <Sidebar username={username} mailbox={mailbox} tag={tag} trashView={trashOnly} />
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Mobile top bar — hidden on sm+ screens where the sidebar is visible */}

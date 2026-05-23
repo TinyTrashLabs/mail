@@ -39,6 +39,7 @@ interface FullMessage extends Message {
 interface MessageState {
   is_read: boolean;
   is_starred: boolean;
+  is_trashed: boolean;
 }
 
 interface InboxClientProps {
@@ -128,7 +129,8 @@ export function InboxClient({
   const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const getState = useCallback(
-    (id: number): MessageState => states[String(id)] ?? { is_read: false, is_starred: false },
+    (id: number): MessageState =>
+      states[String(id)] ?? { is_read: false, is_starred: false, is_trashed: false },
     [states]
   );
 
@@ -160,7 +162,10 @@ export function InboxClient({
     // Mark read optimistically
     setStates(prev => ({
       ...prev,
-      [String(id)]: { ...(prev[String(id)] ?? { is_read: false, is_starred: false }), is_read: true },
+      [String(id)]: {
+        ...(prev[String(id)] ?? { is_read: false, is_starred: false, is_trashed: false }),
+        is_read: true,
+      },
     }));
     fetch(`/api/message-states/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -175,7 +180,7 @@ export function InboxClient({
   }, [router, searchParams]);
 
   const patchState = useCallback(async (id: number, patch: Partial<MessageState>) => {
-    const pre = states[String(id)] ?? { is_read: false, is_starred: false };
+    const pre = states[String(id)] ?? { is_read: false, is_starred: false, is_trashed: false };
     setStates(prev => ({ ...prev, [String(id)]: { ...pre, ...patch } }));
     try {
       await fetch(`/api/message-states/${id}`, {
@@ -367,6 +372,7 @@ export function InboxClient({
               messageId={selectedMsg.id}
               initialStarred={states[String(selectedMsg.id)]?.is_starred ?? false}
               initialRead={states[String(selectedMsg.id)]?.is_read ?? true}
+              initialTrashed={states[String(selectedMsg.id)]?.is_trashed ?? false}
               replyHref={replyHref}
               backHref={`/inbox?mailbox=${mailbox}`}
             />

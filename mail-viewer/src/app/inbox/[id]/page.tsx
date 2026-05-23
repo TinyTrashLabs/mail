@@ -83,6 +83,7 @@ export default async function MessagePage({
     : ({} as import('@/lib/mail-store').StateMap);
   const initialStarred = stateMap[String(msg.id)]?.is_starred ?? false;
   const initialRead = stateMap[String(msg.id)]?.is_read ?? false;
+  const initialTrashed = stateMap[String(msg.id)]?.is_trashed ?? false;
 
   const replyHref = `/compose?replyTo=${encodeURIComponent(msg.from_addr)}&subject=${encodeURIComponent(`Re: ${msg.subject}`)}&inReplyTo=${encodeURIComponent(msg.message_id || '')}`;
   const backHref = `/inbox?mailbox=${mailbox}`;
@@ -105,6 +106,7 @@ export default async function MessagePage({
             messageId={msg.id}
             initialStarred={initialStarred}
             initialRead={initialRead}
+            initialTrashed={initialTrashed}
             replyHref={replyHref}
             backHref={backHref}
           />
