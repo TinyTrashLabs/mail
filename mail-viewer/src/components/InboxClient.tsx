@@ -193,7 +193,7 @@ export function InboxClient({
     }
   }, [states]);
 
-  const toggleStar = useCallback((e: React.MouseEvent, id: number) => {
+  const toggleStar = useCallback((e: React.MouseEvent | React.KeyboardEvent, id: number) => {
     e.stopPropagation();
     patchState(id, { is_starred: !getState(id).is_starred });
   }, [getState, patchState]);
@@ -338,11 +338,18 @@ export function InboxClient({
                     </div>
                   )}
                 </div>
-                {/* Icons */}
+                {/* Icons — note: star uses span+role because this is nested inside a <button> row */}
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                  <button onClick={e => toggleStar(e, msg.id)} className="focus:outline-none">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={state.is_starred ? 'Unstar' : 'Star'}
+                    onClick={e => toggleStar(e, msg.id)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleStar(e, msg.id); } }}
+                    className="focus:outline-none cursor-pointer"
+                  >
                     <Star size={12} strokeWidth={1.5} className={state.is_starred ? 'fill-[#d8a14a] text-[#d8a14a]' : 'text-rule group-hover:text-ink-soft'} />
-                  </button>
+                  </span>
                   {(msg.attachments_meta?.length ?? 0) > 0 && (
                     <Paperclip size={11} className="text-ink-soft" strokeWidth={1.75} />
                   )}
