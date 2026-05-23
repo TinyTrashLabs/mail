@@ -272,15 +272,15 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
 
           {/* Actions */}
           <div className="flex items-center gap-3">
-            <button onClick={send} disabled={sending || !to || !subject}
-              title={!to ? 'Add a recipient to send' : !subject ? 'Add a subject to send' : 'Send message'}
+            <button onClick={send} disabled={sending || !to || !subject || bodyEmpty}
+              title={!to ? 'Add a recipient to send' : !subject ? 'Add a subject to send' : bodyEmpty ? 'Write a message body to send' : 'Send message'}
               className="flex items-center gap-2 px-5 py-2 min-h-[40px] bg-teal hover:bg-teal-strong disabled:opacity-50 disabled:cursor-not-allowed text-cream rounded-card text-sm font-sans font-medium transition-colors">
               <Send size={13} strokeWidth={2} />
               {sending ? 'Sending…' : 'Send'}
             </button>
-            {(!to || !subject) && !sending && (
+            {(!to || !subject || bodyEmpty) && !sending && (
               <span className="text-xs font-sans text-ink-soft/70">
-                {!to ? '— add a recipient first' : '— add a subject first'}
+                {!to ? '— add a recipient first' : !subject ? '— add a subject first' : '— write a message body first'}
               </span>
             )}
             {/* Attach file */}
