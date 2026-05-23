@@ -37,6 +37,35 @@ export function filterIndices(indices: unknown[] | undefined, length: number): n
 }
 
 /**
+ * Given a list of AI-suggested tags and the message's current tags, return
+ * only the suggested tags that aren't already on the message. Pure function
+ * — used by MessageTagBar's runAutoTag to compute what to POST.
+ */
+export function diffSuggestedTags(suggested: unknown, currentTags: string[]): string[] {
+  if (!Array.isArray(suggested)) return [];
+  const have = new Set(currentTags);
+  const out: string[] = [];
+  for (const t of suggested) {
+    if (typeof t !== 'string') continue;
+    if (have.has(t)) continue;
+    if (out.includes(t)) continue; // dedup the suggestion list itself
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Merge a list of new tags into an existing set, dedup case-insensitively
+ * (model never returns mixed case but defense in depth), sort ascending.
+ */
+export function mergeTags(existing: string[], incoming: string[]): string[] {
+  const set = new Set<string>();
+  for (const t of existing) set.add(t);
+  for (const t of incoming) set.add(t);
+  return Array.from(set).sort();
+}
+
+/**
  * Strip HTML to plain text for AI summarization.
  * Uses sanitize-html to remove script/style bodies (preventing prompt contamination),
  * then decodes HTML entities via the 'he' library.

@@ -7,13 +7,16 @@
  * The AI button calls auto-tag with the message's subject/from/body, then
  * adds the returned tags via the same POST /tags route with source='ai'.
  *
- * All setTags calls use the functional form so concurrent removes / adds /
- * AI completions interleave correctly without dropping each other's edits.
+ * Concurrency model: a ref mirrors the latest tags so async handlers can
+ * read the current set synchronously without depending on `tags` in their
+ * useCallback deps, and all state mutations go through functional setTags
+ * so concurrent removes / adds / AI completions interleave correctly.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Sparkles, X } from 'lucide-react';
 import { AddTagDialog } from './AddTagDialog';
+import { diffSuggestedTags, mergeTags } from '@/lib/ai-utils';
 
 interface MessageTagBarProps {
   messageId: number;
@@ -24,6 +27,10 @@ interface MessageTagBarProps {
 }
 
 type Notice = { kind: 'error' | 'info'; text: string } | null;
+
+// Belt-and-suspenders cap on body sent to AI. The route also caps at 3000
+// after HTML strip; capping client-side saves bytes on the wire.
+const AI_BODY_CAP = 6000;
 
 export function MessageTagBar({
   messageId,
@@ -37,18 +44,24 @@ export function MessageTagBar({
   const [aiLoading, setAiLoading] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
 
+  // Mirror the current tag set in a ref so async handlers can read it
+  // synchronously without re-creating their callbacks on every tag edit.
+  const tagsRef = useRef<string[]>(initialTags);
+  useEffect(() => { tagsRef.current = tags; }, [tags]);
+
   const removeTag = useCallback(async (tag: string) => {
-    // Functional update keeps in-flight adds/AI from being clobbered
     setTags(prev => prev.filter(t => t !== tag));
     try {
       const resp = await fetch(`/api/messages/${messageId}/tags?tag=${encodeURIComponent(tag)}`, {
         method: 'DELETE',
       });
       if (!resp.ok) {
-        // Revert just this tag if removal failed, without dropping concurrent edits
         setTags(prev => (prev.includes(tag) ? prev : [...prev, tag].sort()));
         setNotice({ kind: 'error', text: 'Failed to remove tag.' });
+        return;
       }
+      // Success — clear any stale error from a previous failed action
+      setNotice(null);
     } catch {
       setTags(prev => (prev.includes(tag) ? prev : [...prev, tag].sort()));
       setNotice({ kind: 'error', text: 'Failed to remove tag.' });
@@ -56,7 +69,7 @@ export function MessageTagBar({
   }, [messageId]);
 
   const onAdded = useCallback((newTags: string[]) => {
-    setTags(prev => Array.from(new Set([...prev, ...newTags])).sort());
+    setTags(prev => mergeTags(prev, newTags));
     setAdding(false);
     setNotice(null);
   }, []);
@@ -64,17 +77,16 @@ export function MessageTagBar({
   const runAutoTag = useCallback(async () => {
     setAiLoading(true);
     setNotice(null);
-    // Snapshot tags at request time for the existing-tags hint to the model.
-    // The merge below uses functional setTags so any concurrent edits survive.
-    const existingSnapshot = tags;
     try {
+      const existingSnapshot = tagsRef.current;
+      const trimmedBody = body.length > AI_BODY_CAP ? body.slice(0, AI_BODY_CAP) : body;
       const resp = await fetch('/api/ai/auto-tag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subject,
           from,
-          body,
+          body: trimmedBody,
           existingTags: existingSnapshot,
         }),
       });
@@ -83,19 +95,13 @@ export function MessageTagBar({
         setNotice({ kind: 'error', text: json.error || 'AI tagging failed.' });
         return;
       }
-      const suggested: string[] = Array.isArray(json.tags) ? json.tags : [];
-      // Filter against the CURRENT tag set (not the snapshot) — user may have
-      // added/removed while AI was thinking.
-      let toPersist: string[] = [];
-      setTags(prev => {
-        toPersist = suggested.filter(t => !prev.includes(t));
-        return prev; // no state change yet; persist first
-      });
+      // Read CURRENT tag set (post-AI-roundtrip) via the ref so any concurrent
+      // user edits during the AI call are respected, then diff against suggestions.
+      const toPersist = diffSuggestedTags(json.tags, tagsRef.current);
       if (!toPersist.length) {
         setNotice({ kind: 'info', text: 'AI didn\'t suggest any new tags.' });
         return;
       }
-      // Persist via the same /tags route with source='ai'
       const saveResp = await fetch(`/api/messages/${messageId}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,14 +112,14 @@ export function MessageTagBar({
         setNotice({ kind: 'error', text: saveJson.error || 'Failed to save AI tags.' });
         return;
       }
-      setTags(prev => Array.from(new Set([...prev, ...toPersist])).sort());
+      setTags(prev => mergeTags(prev, toPersist));
       setNotice(null);
     } catch {
       setNotice({ kind: 'error', text: 'AI request failed.' });
     } finally {
       setAiLoading(false);
     }
-  }, [messageId, subject, from, body, tags]);
+  }, [messageId, subject, from, body]);
 
   return (
     <div className="mb-4">
