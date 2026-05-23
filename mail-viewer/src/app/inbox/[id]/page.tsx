@@ -7,6 +7,7 @@ import sanitizeHtml from 'sanitize-html';
 import { Sidebar } from '@/components/Sidebar';
 import { AISummary } from '@/components/AISummary';
 import { MessageActions } from '@/components/MessageActions';
+import { MessageTagBar } from '@/components/MessageTagBar';
 import { stripHtml } from '@/lib/ai-utils';
 import {
   ArrowLeft,
@@ -116,6 +117,17 @@ export default async function MessagePage({
             <h1 className="text-xl font-serif font-semibold text-ink mb-6 leading-snug">
               {msg.subject}
             </h1>
+
+            {/* Tag bar — chips for existing tags + add/remove + AI auto-tag.
+                Hides itself if there are no tags AND user hasn't opened add,
+                but keeps the AI/Add buttons always visible. */}
+            <MessageTagBar
+              messageId={msg.id}
+              subject={msg.subject}
+              from={msg.from_addr}
+              body={bodyForAI}
+              initialTags={msg.tags ?? []}
+            />
 
             {/* AI Summary — only shown when body is available */}
             {bodyForAI && (
