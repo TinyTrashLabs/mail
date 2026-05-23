@@ -53,16 +53,17 @@ services:
       VIEWER_SECRET: ${VIEWER_SECRET}
       RESEND_API_KEY: ${RESEND_API_KEY}
       RESEND_FROM_DOMAIN: ${RESEND_FROM_DOMAIN:-tinytrashlabs.com}
-    # AI features (summarize, draft assist, smart search) authenticate via the
-    # shared Claude OAuth credentials volume the personas stack uses. The viewer
-    # runs as user `nextjs` (uid 1001), so we mount the volume at that user's
-    # ~/.claude — @anthropic-ai/claude-agent-sdk's query() resolves credentials
-    # from os.homedir()/.claude/.credentials.json, no API key needed.
-    # Mounted RW (not RO) because the agent SDK refreshes the OAuth token
-    # in-place and would silently fail otherwise. The personas stack mounts
-    # this same volume RW; this just matches that contract.
+      # The claude-creds volume is written by the personas stack running as user
+      # `node` (uid 1000), so credentials live at /home/node/.claude/.credentials.json
+      # inside the volume. The Claude binary resolves creds from $HOME/.claude, so
+      # we override HOME here to match — otherwise the binary sees an empty file at
+      # /home/nextjs/.claude/.credentials.json and returns "Not logged in".
+      HOME: /home/node
+    # AI features authenticate via the shared Claude OAuth credentials volume.
+    # Volume mount path updated to match HOME so the binary finds the credentials.
+    # Mounted RW because the agent SDK refreshes the OAuth token in-place.
     volumes:
-      - claude-creds:/home/nextjs/.claude
+      - claude-creds:/home/node/.claude
     ports:
       - "3026:3000"
 
