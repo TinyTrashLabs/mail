@@ -91,20 +91,8 @@ Respond ONLY with valid JSON in this exact shape:
     return NextResponse.json({ results, explanation: parsed.explanation || '' });
   } catch (err) {
     console.error('[ai/search] error:', err);
-    // Provide a more helpful error message
-    const errMsg = err instanceof Error ? err.message : String(err);
-    if (errMsg.includes('credentials') || errMsg.includes('auth')) {
-      return NextResponse.json(
-        { error: 'AI service authentication failed. Please try again later.' },
-        { status: 503 }
-      );
-    }
-    if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT')) {
-      return NextResponse.json(
-        { error: 'AI search timed out. Try a simpler query.' },
-        { status: 504 }
-      );
-    }
+    // Return a generic but helpful error message
+    // The specific error details are logged server-side for debugging
     return NextResponse.json(
       { error: 'AI search encountered an error. Use the filter box for basic search.' },
       { status: 502 }

@@ -15,6 +15,9 @@ export function MobileHeader({ username, fullName, mailbox, tag, trashView }: Mo
   const [menuOpen, setMenuOpen] = useState(false);
   const displayName = (fullName && fullName !== username) ? fullName : username;
 
+  // For Trash link, use the base mailbox (personal or shared), not a tag-filtered view
+  const baseMailbox = mailbox === 'shared' ? 'shared' : username || 'shared';
+
   // Determine which mailbox is active for display
   const getMailboxLabel = () => {
     if (trashView) return 'Trash';
@@ -41,14 +44,14 @@ export function MobileHeader({ username, fullName, mailbox, tag, trashView }: Mo
     },
     {
       label: 'Trash',
-      href: `/inbox?mailbox=${encodeURIComponent(mailbox)}&trash=1`,
+      href: `/inbox?mailbox=${encodeURIComponent(baseMailbox)}&trash=1`,
       icon: Trash2,
       active: !!trashView
     },
   ];
 
   return (
-    <div className="sm:hidden flex-shrink-0">
+    <div className="sm:hidden flex-shrink-0 relative">
       {/* Main header bar */}
       <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-rule bg-[#f0ede4]">
         {/* Mailbox selector button */}
@@ -79,8 +82,8 @@ export function MobileHeader({ username, fullName, mailbox, tag, trashView }: Mo
             className="fixed inset-0 bg-ink/20 z-40"
             onClick={() => setMenuOpen(false)}
           />
-          {/* Menu */}
-          <div className="absolute left-2 right-2 top-12 bg-cream border border-rule rounded-card shadow-lg z-50 overflow-hidden">
+          {/* Menu - positioned relative to parent which now has relative class */}
+          <div className="absolute left-0 right-0 top-full mt-1 mx-2 bg-cream border border-rule rounded-card shadow-lg z-50 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rule bg-[#f0ede4]">
               <span className="text-xs font-sans font-semibold text-ink-soft uppercase tracking-wide">Mailboxes</span>
               <button onClick={() => setMenuOpen(false)} className="text-ink-soft hover:text-ink">
