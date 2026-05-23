@@ -19,6 +19,7 @@ export interface MailMessage {
 export interface MessageState {
   is_read: boolean;
   is_starred: boolean;
+  is_trashed: boolean;
 }
 
 export type StateMap = Record<string, MessageState>;
@@ -72,10 +73,12 @@ export async function fetchMessages(
   viewerUser: string,
   page = 1,
   limit = 50,
-  tag?: string
+  tag?: string,
+  opts?: { trashOnly?: boolean }
 ): Promise<MessagesResponse> {
   let qs = `?mailbox=${encodeURIComponent(mailbox)}&page=${page}&limit=${limit}`;
   if (tag) qs += `&tag=${encodeURIComponent(tag)}`;
+  if (opts?.trashOnly) qs += `&trash=1`;
   const resp = await callStoreAs(`/messages${qs}`, viewerUser);
   if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
   return resp.json();

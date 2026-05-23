@@ -1,13 +1,14 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Inbox, PenSquare, Users, Tag, LogOut } from 'lucide-react';
+import { Inbox, PenSquare, Users, Tag, LogOut, Trash2 } from 'lucide-react';
 
 interface SidebarProps {
   username: string;
   fullName?: string;
   mailbox: string;
   tag?: string;
+  trashView?: boolean;
 }
 
 interface TagRow { tag: string; count: number | string }
@@ -19,7 +20,7 @@ function tagDot(tag: string) {
   return TAG_DOT_PALETTE[h % TAG_DOT_PALETTE.length];
 }
 
-export function Sidebar({ username, fullName, mailbox, tag: activeTag }: SidebarProps) {
+export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView }: SidebarProps) {
   const [tags, setTags] = useState<TagRow[]>([]);
   const displayName = (fullName && fullName !== username) ? fullName : username;
 
@@ -39,9 +40,10 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag }: Sidebar
 
   const navItems = [
     ...(username
-      ? [{ label: `${displayName}'s inbox`, sub: `${username}@`, href: `/inbox?mailbox=${username}`, icon: Inbox, active: mailbox === username && !activeTag }]
+      ? [{ label: `${displayName}'s inbox`, sub: `${username}@`, href: `/inbox?mailbox=${username}`, icon: Inbox, active: mailbox === username && !activeTag && !trashView }]
       : []),
-    { label: 'Shared', sub: 'team mail', href: '/inbox?mailbox=shared', icon: Users, active: mailbox === 'shared' && !activeTag },
+    { label: 'Shared', sub: 'team mail', href: '/inbox?mailbox=shared', icon: Users, active: mailbox === 'shared' && !activeTag && !trashView },
+    { label: 'Trash', sub: 'recently deleted', href: `/inbox?mailbox=${encodeURIComponent(mailbox)}&trash=1`, icon: Trash2, active: !!trashView },
   ];
 
   return (

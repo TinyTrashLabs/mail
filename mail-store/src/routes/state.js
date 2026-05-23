@@ -25,9 +25,13 @@ function resolveViewerUser(req, res) {
   return user;
 }
 
+// Columns the PATCH endpoint accepts and inserts. Adding a new boolean state
+// flag is now a one-line change here.
+const PATCH_COLUMNS = ['is_read', 'is_starred', 'is_trashed'];
+
 /**
  * PATCH /message-states/:id
- * Body: { is_read?: boolean, is_starred?: boolean }
+ * Body: { is_read?: boolean, is_starred?: boolean, is_trashed?: boolean }
  * Upserts per-user message state. Returns the updated state row.
  * Route uses /message-states (not /messages/:id/state) to avoid any
  * ordering dependency with messagesRouter's /messages/:id GET route.
@@ -41,16 +45,18 @@ router.patch('/message-states/:id', async (req, res) => {
   const id = parseMessageId(req.params.id);
   if (id === null) return res.status(400).json({ error: 'invalid id' });
 
-  // Validate body — only allow known boolean fields
-  const { is_read, is_starred } = req.body || {};
-  if (is_read === undefined && is_starred === undefined) {
+  // Validate body — only allow known boolean fields from PATCH_COLUMNS allowlist.
+  const body = req.body || {};
+  const patch = {};
+  for (const col of PATCH_COLUMNS) {
+    if (body[col] === undefined) continue;
+    if (typeof body[col] !== 'boolean') {
+      return res.status(400).json({ error: `${col} must be boolean` });
+    }
+    patch[col] = body[col];
+  }
+  if (Object.keys(patch).length === 0) {
     return res.status(400).json({ error: 'no fields to update' });
-  }
-  if (is_read !== undefined && typeof is_read !== 'boolean') {
-    return res.status(400).json({ error: 'is_read must be boolean' });
-  }
-  if (is_starred !== undefined && typeof is_starred !== 'boolean') {
-    return res.status(400).json({ error: 'is_starred must be boolean' });
   }
 
   try {
@@ -60,33 +66,32 @@ router.patch('/message-states/:id', async (req, res) => {
       return res.status(404).json({ error: 'not found' });
     }
 
-    // Build upsert with explicit positional params — never use indexOf on booleans.
-    // values[0]=username ($1), values[1]=id ($2), then optional is_read ($3?), is_starred ($4/$3?)
+    // Build INSERT column list with $-params for each PATCH_COLUMNS member.
+    // For columns not in the patch, insert FALSE (the schema default) so the
+    // initial row has all flags explicitly false.
+    const insertCols = ['username', 'message_id', ...PATCH_COLUMNS];
     const values = [viewerUser, id];
-    const sets = [];
-
-    let readParam = 'FALSE';
-    if (is_read !== undefined) {
-      values.push(is_read);
-      readParam = `$${values.length}`;
-      sets.push(`is_read = ${readParam}`);
+    const insertParams = ['$1', '$2'];
+    const updateSets = [];
+    for (const col of PATCH_COLUMNS) {
+      if (col in patch) {
+        values.push(patch[col]);
+        const p = `$${values.length}`;
+        insertParams.push(p);
+        updateSets.push(`${col} = ${p}`);
+      } else {
+        insertParams.push('FALSE');
+      }
     }
+    updateSets.push('updated_at = NOW()');
 
-    let starredParam = 'FALSE';
-    if (is_starred !== undefined) {
-      values.push(is_starred);
-      starredParam = `$${values.length}`;
-      sets.push(`is_starred = ${starredParam}`);
-    }
-
-    sets.push('updated_at = NOW()');
-
+    const returningCols = PATCH_COLUMNS.join(', ');
     const result = await pool.query(
-      `INSERT INTO message_state (username, message_id, is_read, is_starred)
-         VALUES ($1, $2, ${readParam}, ${starredParam})
+      `INSERT INTO message_state (${insertCols.join(', ')})
+         VALUES (${insertParams.join(', ')})
        ON CONFLICT (username, message_id) DO UPDATE
-         SET ${sets.join(', ')}
-       RETURNING is_read, is_starred`,
+         SET ${updateSets.join(', ')}
+       RETURNING ${returningCols}`,
       values
     );
 
@@ -115,17 +120,20 @@ router.get('/message-states', async (req, res) => {
   if (!ids.length) return res.json({});
 
   try {
+    const selectCols = ['message_id', ...PATCH_COLUMNS].join(', ');
     const { rows } = await pool.query(
-      `SELECT message_id, is_read, is_starred
+      `SELECT ${selectCols}
          FROM message_state
         WHERE username = $1 AND message_id = ANY($2::bigint[])`,
       [viewerUser, ids]
     );
 
-    // Return map: { [id]: { is_read, is_starred } }
+    // Return map: { [id]: { is_read, is_starred, is_trashed } }
     const stateMap = {};
     for (const row of rows) {
-      stateMap[String(row.message_id)] = { is_read: row.is_read, is_starred: row.is_starred };
+      const entry = {};
+      for (const col of PATCH_COLUMNS) entry[col] = row[col];
+      stateMap[String(row.message_id)] = entry;
     }
     res.json(stateMap);
   } catch (err) {

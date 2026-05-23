@@ -25,19 +25,15 @@ export async function PATCH(
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
 
-  // Only allow known boolean fields
-  const patch: { is_read?: boolean; is_starred?: boolean } = {};
-  if (body.is_read !== undefined) {
-    if (typeof body.is_read !== 'boolean') {
-      return NextResponse.json({ error: 'is_read must be boolean' }, { status: 400 });
+  // Only allow known boolean fields (allowlist, kept in sync with mail-store PATCH_COLUMNS).
+  const allowed = ['is_read', 'is_starred', 'is_trashed'] as const;
+  const patch: Partial<Record<typeof allowed[number], boolean>> = {};
+  for (const key of allowed) {
+    if (body[key] === undefined) continue;
+    if (typeof body[key] !== 'boolean') {
+      return NextResponse.json({ error: `${key} must be boolean` }, { status: 400 });
     }
-    patch.is_read = body.is_read;
-  }
-  if (body.is_starred !== undefined) {
-    if (typeof body.is_starred !== 'boolean') {
-      return NextResponse.json({ error: 'is_starred must be boolean' }, { status: 400 });
-    }
-    patch.is_starred = body.is_starred;
+    patch[key] = body[key] as boolean;
   }
   if (!Object.keys(patch).length) {
     return NextResponse.json({ error: 'no fields to update' }, { status: 400 });
