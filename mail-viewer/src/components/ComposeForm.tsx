@@ -186,6 +186,8 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
                 className="flex-1 bg-transparent px-3 py-3 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                 placeholder="recipient@example.com" autoFocus={!to} />
               <button onClick={() => setShowCcBcc(v => !v)}
+                aria-label={showCcBcc ? 'Hide CC and BCC fields' : 'Show CC and BCC fields'}
+                aria-expanded={showCcBcc}
                 className="flex items-center gap-0.5 px-3 py-3 text-xs font-sans text-ink-soft hover:text-ink transition-colors flex-shrink-0">
                 CC/BCC <ChevronDown size={11} strokeWidth={2} className={`transition-transform ${showCcBcc ? 'rotate-180' : ''}`} />
               </button>
@@ -195,15 +197,15 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
             {showCcBcc && (
               <>
                 <div className="flex items-center border-b border-rule">
-                  <label className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">CC</label>
-                  <input value={cc} onChange={e => setCc(e.target.value)}
+                  <label htmlFor="compose-cc" className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">CC</label>
+                  <input id="compose-cc" value={cc} onChange={e => setCc(e.target.value)}
                     type="email" multiple
                     className="flex-1 bg-transparent px-3 py-2.5 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                     placeholder="cc@example.com" />
                 </div>
                 <div className="flex items-center border-b border-rule">
-                  <label className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">BCC</label>
-                  <input value={bcc} onChange={e => setBcc(e.target.value)}
+                  <label htmlFor="compose-bcc" className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">BCC</label>
+                  <input id="compose-bcc" value={bcc} onChange={e => setBcc(e.target.value)}
                     type="email" multiple
                     className="flex-1 bg-transparent px-3 py-2.5 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                     placeholder="bcc@example.com" />
@@ -213,8 +215,8 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
 
             {/* Subject */}
             <div className="flex items-center border-b border-rule">
-              <label className="px-4 py-3 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">Subject</label>
-              <input value={subject} onChange={e => setSubject(e.target.value)}
+              <label htmlFor="compose-subject" className="px-4 py-3 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">Subject</label>
+              <input id="compose-subject" value={subject} onChange={e => setSubject(e.target.value)}
                 className="flex-1 bg-transparent px-3 py-3 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                 placeholder="Subject" />
             </div>
