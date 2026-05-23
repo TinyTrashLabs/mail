@@ -7,6 +7,8 @@ import {
   parseAISearchResponse,
   filterIndices,
   stripHtml,
+  diffSuggestedTags,
+  mergeTags,
 } from '../../src/lib/ai-utils';
 
 describe('allowedMailboxes', () => {
@@ -118,5 +120,55 @@ describe('stripHtml', () => {
     // sanitize-html decodes entities when stripping
     const result = stripHtml('Hello &amp; world');
     expect(result).toBe('Hello & world');
+  });
+});
+
+describe('diffSuggestedTags', () => {
+  it('returns suggestions not already on the message', () => {
+    expect(diffSuggestedTags(['urgent', 'receipt', 'shipping'], ['receipt'])).toEqual(['urgent', 'shipping']);
+  });
+
+  it('returns [] when AI suggests nothing new', () => {
+    expect(diffSuggestedTags(['receipt', 'urgent'], ['urgent', 'receipt'])).toEqual([]);
+  });
+
+  it('returns [] for empty suggestion list', () => {
+    expect(diffSuggestedTags([], ['urgent'])).toEqual([]);
+  });
+
+  it('returns [] when suggestions is not an array', () => {
+    expect(diffSuggestedTags(undefined, ['x'])).toEqual([]);
+    expect(diffSuggestedTags(null, ['x'])).toEqual([]);
+    expect(diffSuggestedTags('urgent', ['x'])).toEqual([]);
+  });
+
+  it('drops non-string suggestions', () => {
+    expect(diffSuggestedTags(['urgent', 7, null, 'receipt'], [])).toEqual(['urgent', 'receipt']);
+  });
+
+  it('dedups within the suggestion list itself', () => {
+    expect(diffSuggestedTags(['urgent', 'urgent', 'receipt'], [])).toEqual(['urgent', 'receipt']);
+  });
+
+  it('preserves AI order (not alpha) so user sees ranked suggestions', () => {
+    expect(diffSuggestedTags(['zeta', 'alpha', 'mu'], [])).toEqual(['zeta', 'alpha', 'mu']);
+  });
+});
+
+describe('mergeTags', () => {
+  it('merges and dedups', () => {
+    expect(mergeTags(['b', 'a'], ['c', 'a'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns existing alpha-sorted when incoming is empty', () => {
+    expect(mergeTags(['c', 'a', 'b'], [])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns incoming alpha-sorted when existing is empty', () => {
+    expect(mergeTags([], ['z', 'a'])).toEqual(['a', 'z']);
+  });
+
+  it('handles both empty', () => {
+    expect(mergeTags([], [])).toEqual([]);
   });
 });
