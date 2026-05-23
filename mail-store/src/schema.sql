@@ -51,3 +51,13 @@ CREATE TABLE IF NOT EXISTS message_tags (
 
 CREATE INDEX IF NOT EXISTS idx_message_tags_message_id ON message_tags (message_id);
 CREATE INDEX IF NOT EXISTS idx_message_tags_tag ON message_tags (tag);
+
+-- Migration: shared trash for the shared mailbox.
+-- Messages trashed from the shared mailbox set is_globally_trashed so all
+-- users see them removed from the shared inbox (not just the user who trashed).
+ALTER TABLE messages
+  ADD COLUMN IF NOT EXISTS is_globally_trashed BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_messages_globally_trashed
+  ON messages (is_globally_trashed)
+  WHERE is_globally_trashed = TRUE;
