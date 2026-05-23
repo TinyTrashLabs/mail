@@ -180,9 +180,9 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
           <div className="border border-rule rounded-card overflow-hidden">
             {/* To */}
             <div className="flex items-center border-b border-rule">
-              <label className="px-4 py-3 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">To</label>
-              <input value={to} onChange={e => setTo(e.target.value)}
-                type="email"
+              <label htmlFor="compose-to" className="px-4 py-3 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">To</label>
+              <input id="compose-to" value={to} onChange={e => setTo(e.target.value)}
+                type="email" multiple
                 className="flex-1 bg-transparent px-3 py-3 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
                 placeholder="recipient@example.com" autoFocus={!to} />
               <button onClick={() => setShowCcBcc(v => !v)}
