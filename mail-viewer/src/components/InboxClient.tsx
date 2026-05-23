@@ -3,6 +3,7 @@
 /**
  * InboxClient — Gmail-style two-pane layout.
  * Left: message list. Right: reading pane (loaded via ?msg=<id> URL state).
+ * On mobile (< sm breakpoint), shows only one pane at a time.
  * Keyboard: j/k navigate, Enter open in pane, o open full page, s star,
  *           r reply, / search, ? help, Escape close pane.
  */
@@ -246,28 +247,33 @@ export function InboxClient({
   return (
     <div className="flex-1 flex overflow-hidden min-h-0">
       {/* ── LEFT PANE: message list ── */}
-      <div className={`flex flex-col overflow-hidden border-r border-rule bg-cream transition-all duration-200 ${selectedMsgId ? 'w-80 flex-shrink-0' : 'flex-1'}`}>
+      {/* On mobile: hide when message selected. On desktop: show as narrow pane */}
+      <div className={`flex flex-col overflow-hidden border-r border-rule bg-cream transition-all duration-200 ${
+        selectedMsgId 
+          ? 'hidden sm:flex sm:w-80 sm:flex-shrink-0' 
+          : 'flex-1'
+      }`}>
         {/* Toolbar */}
         <div className="px-4 pt-3 pb-2 border-b border-rule flex-shrink-0 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-sans font-semibold text-ink capitalize">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <h1 className="text-sm font-sans font-semibold text-ink capitalize truncate">
                 {activeTag ? `#${activeTag}` : mailbox}
               </h1>
               {unreadCount > 0 && (
-                <span className="text-xs bg-teal text-cream rounded-full px-2 py-0.5 font-sans font-medium">
+                <span className="text-xs bg-teal text-cream rounded-full px-2 py-0.5 font-sans font-medium flex-shrink-0">
                   {unreadCount}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-shrink-0">
               {(['all', 'unread', 'starred'] as ViewMode[]).map(mode => (
                 <button key={mode} onClick={() => setViewMode(mode)}
                   className={`text-xs px-2 py-1 rounded font-sans transition-colors capitalize ${viewMode === mode ? 'bg-teal text-cream font-medium' : 'text-ink-soft hover:text-ink'}`}>
                   {mode}
                 </button>
               ))}
-              <button onClick={() => setShowHelp(v => !v)} className="text-ink-soft hover:text-ink ml-1" title="?">
+              <button onClick={() => setShowHelp(v => !v)} className="hidden sm:block text-ink-soft hover:text-ink ml-1" title="?">
                 <HelpCircle size={14} strokeWidth={1.75} />
               </button>
             </div>
@@ -350,23 +356,25 @@ export function InboxClient({
         {totalPages > 1 && (
           <div className="flex justify-center items-center gap-3 px-4 py-2 border-t border-rule text-xs font-sans flex-shrink-0">
             {page > 1 && (
-              <Link href={`/inbox?mailbox=${mailbox}&page=${page - 1}${activeTag ? `&tag=${activeTag}` : ''}`} className="text-teal-strong hover:underline">← Prev</Link>
+              <Link href={`/inbox?mailbox=${mailbox}&page=${page - 1}${activeTag ? `&tag=${activeTag}` : ''}`} className="text-teal-strong hover:underline">Prev</Link>
             )}
             <span className="text-ink-soft">{page}/{totalPages}</span>
             {page < totalPages && (
-              <Link href={`/inbox?mailbox=${mailbox}&page=${page + 1}${activeTag ? `&tag=${activeTag}` : ''}`} className="text-teal-strong hover:underline">Next →</Link>
+              <Link href={`/inbox?mailbox=${mailbox}&page=${page + 1}${activeTag ? `&tag=${activeTag}` : ''}`} className="text-teal-strong hover:underline">Next</Link>
             )}
           </div>
         )}
       </div>
 
       {/* ── RIGHT PANE: reading pane ── */}
+      {/* On mobile: full screen when message selected. On desktop: flex alongside list */}
       {selectedMsgId && selectedMsg ? (
         <div className="flex-1 flex flex-col overflow-hidden bg-cream min-w-0">
           {/* Pane toolbar */}
           <div className="flex items-center gap-2 px-4 py-3 border-b border-rule bg-cream flex-shrink-0">
-            <button onClick={closePane} className="flex items-center gap-1 text-xs font-sans text-ink-soft hover:text-ink transition-colors">
-              <ArrowLeft size={13} strokeWidth={1.75} />
+            <button onClick={closePane} className="flex items-center gap-1 text-xs font-sans text-ink-soft hover:text-ink transition-colors" title="Back to list">
+              <ArrowLeft size={15} strokeWidth={1.75} />
+              <span className="sm:hidden">Back</span>
             </button>
             <MessageActions
               messageId={selectedMsg.id}
@@ -377,9 +385,9 @@ export function InboxClient({
               backHref={`/inbox?mailbox=${mailbox}`}
             />
             <div className="flex-1" />
-            {/* Tags on selected message */}
+            {/* Tags on selected message - hidden on mobile for space */}
             {(selectedMsg.tags?.length ?? 0) > 0 && (
-              <div className="flex items-center gap-1">
+              <div className="hidden sm:flex items-center gap-1">
                 <Tag size={12} strokeWidth={1.75} className="text-ink-soft" />
                 {selectedMsg.tags!.map(t => (
                   <span key={t} className={`text-[10px] px-1.5 py-0.5 rounded font-sans ${tagColor(t)}`}>{t}</span>
@@ -393,8 +401,18 @@ export function InboxClient({
 
           {/* Message content */}
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto px-6 py-6">
-              <h1 className="text-lg font-serif font-semibold text-ink mb-4 leading-snug">{selectedMsg.subject}</h1>
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+              <h1 className="text-base sm:text-lg font-serif font-semibold text-ink mb-3 sm:mb-4 leading-snug">{selectedMsg.subject}</h1>
+
+              {/* Tags on mobile - show below subject */}
+              {(selectedMsg.tags?.length ?? 0) > 0 && (
+                <div className="sm:hidden flex flex-wrap items-center gap-1 mb-3">
+                  <Tag size={11} strokeWidth={1.75} className="text-ink-soft" />
+                  {selectedMsg.tags!.map(t => (
+                    <span key={t} className={`text-[10px] px-1.5 py-0.5 rounded font-sans ${tagColor(t)}`}>{t}</span>
+                  ))}
+                </div>
+              )}
 
               {bodyForAI && (
                 <AISummary messageId={selectedMsg.id} subject={selectedMsg.subject} from={selectedMsg.from_addr} body={bodyForAI} />
@@ -402,7 +420,7 @@ export function InboxClient({
 
               {/* Header card */}
               <div className="bg-[#f0ede4] rounded-card p-3 mb-4">
-                <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 text-xs font-sans">
+                <dl className="grid grid-cols-[3.5rem_1fr] sm:grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 text-xs font-sans">
                   <dt className="font-medium text-ink-soft">From</dt>
                   <dd className="text-ink break-all">{selectedMsg.from_addr}</dd>
                   <dt className="font-medium text-ink-soft">To</dt>
@@ -421,9 +439,9 @@ export function InboxClient({
               {/* Body */}
               <div className="border-t border-rule pt-4 text-sm">
                 {selectedSafeHtml ? (
-                  <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: selectedSafeHtml }} />
+                  <div className="prose prose-sm sm:prose max-w-none overflow-x-auto" dangerouslySetInnerHTML={{ __html: selectedSafeHtml }} />
                 ) : selectedMsg.text_body ? (
-                  <pre className="whitespace-pre-wrap font-mono text-sm text-ink leading-relaxed">{selectedMsg.text_body}</pre>
+                  <pre className="whitespace-pre-wrap font-mono text-xs sm:text-sm text-ink leading-relaxed overflow-x-auto">{selectedMsg.text_body}</pre>
                 ) : (
                   <p className="text-ink-soft italic text-sm font-sans">No body content.</p>
                 )}
@@ -439,9 +457,9 @@ export function InboxClient({
                   <ul className="space-y-1">
                     {selectedMsg.attachments_meta?.map((a, i) => (
                       <li key={i} className="flex items-center gap-2 text-xs font-sans">
-                        <Paperclip size={11} strokeWidth={1.75} className="text-ink-soft" />
-                        <span className="text-ink">{a.filename}</span>
-                        <span className="text-ink-soft">({a.contentType}, {a.size}b)</span>
+                        <Paperclip size={11} strokeWidth={1.75} className="text-ink-soft flex-shrink-0" />
+                        <span className="text-ink truncate">{a.filename}</span>
+                        <span className="text-ink-soft flex-shrink-0">({(a.size / 1024).toFixed(1)}KB)</span>
                       </li>
                     ))}
                   </ul>
@@ -449,7 +467,7 @@ export function InboxClient({
               )}
 
               {/* Reply / Forward */}
-              <div className="mt-6 pt-4 border-t border-rule flex gap-2">
+              <div className="mt-6 pt-4 border-t border-rule flex flex-wrap gap-2">
                 <Link href={replyHref}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-teal hover:bg-teal-strong text-cream rounded-card text-xs font-sans font-medium transition-colors">
                   <Reply size={12} strokeWidth={2} /> Reply
@@ -464,20 +482,15 @@ export function InboxClient({
         </div>
       ) : !selectedMsgId ? null : (
         /* selected ID but message not found */
-        <div className="flex-1 flex items-center justify-center text-ink-soft text-sm font-sans">
+        <div className="flex-1 flex items-center justify-center text-ink-soft text-sm font-sans p-4">
           Message not found.
         </div>
       )}
 
-      {/* Empty state when no message selected */}
-      {!selectedMsgId && messages.length > 0 && (
-        <div className="hidden" /> /* no empty pane shown — full-width list */
-      )}
-
       {/* Help modal */}
       {showHelp && (
-        <div className="fixed inset-0 bg-ink/40 z-50 flex items-center justify-center" onClick={() => setShowHelp(false)}>
-          <div className="bg-cream rounded-card shadow-xl p-6 max-w-sm w-full mx-4 border border-rule" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-ink/40 z-50 flex items-center justify-center p-4" onClick={() => setShowHelp(false)}>
+          <div className="bg-cream rounded-card shadow-xl p-6 max-w-sm w-full border border-rule" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-serif font-semibold text-ink">Keyboard shortcuts</h2>
               <button onClick={() => setShowHelp(false)} className="text-ink-soft hover:text-ink"><X size={16} strokeWidth={2} /></button>

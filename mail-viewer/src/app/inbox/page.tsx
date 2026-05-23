@@ -5,10 +5,9 @@ import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
 import { AISearchBar } from '@/components/AISearchBar';
 import { InboxClient } from '@/components/InboxClient';
+import { MobileHeader } from '@/components/MobileHeader';
 import sanitizeHtml from 'sanitize-html';
 import { stripHtml } from '@/lib/ai-utils';
-import Link from 'next/link';
-import { PenSquare } from 'lucide-react';
 
 export default async function InboxPage({
   searchParams,
@@ -19,6 +18,7 @@ export default async function InboxPage({
   if (!session) redirect('/api/auth/signin');
 
   const username = (session as { username?: string }).username ?? '';
+  const fullName = (session as { fullName?: string }).fullName;
   const mailbox = searchParams.mailbox || username || 'shared';
   const page = parseInt(searchParams.page || '1');
   const tag = searchParams.tag || undefined;
@@ -78,18 +78,12 @@ export default async function InboxPage({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar username={username} mailbox={mailbox} tag={tag} trashView={trashOnly} />
+      <Sidebar username={username} fullName={fullName} mailbox={mailbox} tag={tag} trashView={trashOnly} />
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Mobile top bar — hidden on sm+ screens where the sidebar is visible */}
-        <div className="sm:hidden flex items-center justify-between px-4 py-3 border-b border-rule bg-[#f0ede4] flex-shrink-0">
-          <span className="text-sm font-serif font-semibold text-ink">TTL Mail</span>
-          <Link href="/compose"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-teal hover:bg-teal-strong text-cream rounded-card text-xs font-sans font-medium transition-colors">
-            <PenSquare size={12} strokeWidth={2} />
-            Compose
-          </Link>
-        </div>
+        <MobileHeader username={username} fullName={fullName} mailbox={mailbox} tag={tag} trashView={trashOnly} />
+
         <div className="px-4 pt-3 pb-0 border-b border-rule bg-cream flex-shrink-0">
           <AISearchBar mailbox={mailbox} />
         </div>

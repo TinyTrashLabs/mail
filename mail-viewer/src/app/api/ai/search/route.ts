@@ -22,7 +22,12 @@ export async function POST(req: NextRequest) {
   }
 
   const client = getAIClient();
-  if (!client) return NextResponse.json({ error: 'AI not configured' }, { status: 503 });
+  if (!client) {
+    return NextResponse.json(
+      { error: 'AI search is temporarily unavailable. Please use the filter box instead.' },
+      { status: 503 }
+    );
+  }
 
   const body = await req.json();
   const query: string = typeof body.query === 'string' ? body.query.slice(0, MAX_QUERY_LENGTH) : '';
@@ -86,6 +91,11 @@ Respond ONLY with valid JSON in this exact shape:
     return NextResponse.json({ results, explanation: parsed.explanation || '' });
   } catch (err) {
     console.error('[ai/search] error:', err);
-    return NextResponse.json({ error: 'AI request failed' }, { status: 502 });
+    // Return a generic but helpful error message
+    // The specific error details are logged server-side for debugging
+    return NextResponse.json(
+      { error: 'AI search encountered an error. Use the filter box for basic search.' },
+      { status: 502 }
+    );
   }
 }
