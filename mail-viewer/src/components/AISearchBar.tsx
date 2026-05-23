@@ -124,7 +124,7 @@ export function AISearchBar({ mailbox }: AISearchBarProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-xs font-medium text-ink truncate">{msg.from_addr.split('@')[0]}</span>
-                        <span className="text-xs text-ink-soft flex-shrink-0">
+                        <span className="text-xs text-ink-soft flex-shrink-0" suppressHydrationWarning>
                           {new Date(msg.received_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </span>
                       </div>

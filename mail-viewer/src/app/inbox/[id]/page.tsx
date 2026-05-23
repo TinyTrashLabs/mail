@@ -155,7 +155,7 @@ export default async function MessagePage({
                   </>
                 )}
                 <dt className="font-medium text-ink-soft">Date</dt>
-                <dd className="text-ink">{new Date(msg.received_at).toLocaleString()}</dd>
+                <dd className="text-ink" suppressHydrationWarning>{new Date(msg.received_at).toLocaleString()}</dd>
               </dl>
             </div>
 
