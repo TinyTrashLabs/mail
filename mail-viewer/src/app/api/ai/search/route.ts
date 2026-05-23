@@ -22,7 +22,12 @@ export async function POST(req: NextRequest) {
   }
 
   const client = getAIClient();
-  if (!client) return NextResponse.json({ error: 'AI not configured' }, { status: 503 });
+  if (!client) {
+    return NextResponse.json(
+      { error: 'AI search is temporarily unavailable. Please use the filter box instead.' },
+      { status: 503 }
+    );
+  }
 
   const body = await req.json();
   const query: string = typeof body.query === 'string' ? body.query.slice(0, MAX_QUERY_LENGTH) : '';
@@ -86,6 +91,23 @@ Respond ONLY with valid JSON in this exact shape:
     return NextResponse.json({ results, explanation: parsed.explanation || '' });
   } catch (err) {
     console.error('[ai/search] error:', err);
-    return NextResponse.json({ error: 'AI request failed' }, { status: 502 });
+    // Provide a more helpful error message
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (errMsg.includes('credentials') || errMsg.includes('auth')) {
+      return NextResponse.json(
+        { error: 'AI service authentication failed. Please try again later.' },
+        { status: 503 }
+      );
+    }
+    if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT')) {
+      return NextResponse.json(
+        { error: 'AI search timed out. Try a simpler query.' },
+        { status: 504 }
+      );
+    }
+    return NextResponse.json(
+      { error: 'AI search encountered an error. Use the filter box for basic search.' },
+      { status: 502 }
+    );
   }
 }
