@@ -321,7 +321,7 @@ export function InboxClient({
                     <span className={`text-xs truncate ${state.is_read ? 'text-ink-soft' : 'text-ink font-semibold'}`}>
                       {msg.from_addr.split('@')[0]}
                     </span>
-                    <span className="text-xs text-ink-soft flex-shrink-0">{formatDate(msg.received_at)}</span>
+                    <span className="text-xs text-ink-soft flex-shrink-0" suppressHydrationWarning>{formatDate(msg.received_at)}</span>
                   </div>
                   <div className={`text-xs truncate mt-0.5 ${state.is_read ? 'text-ink-soft' : 'text-ink'}`}>
                     {msg.subject}
@@ -432,7 +432,7 @@ export function InboxClient({
                     </>
                   )}
                   <dt className="font-medium text-ink-soft">Date</dt>
-                  <dd className="text-ink">{new Date(selectedMsg.received_at).toLocaleString()}</dd>
+                  <dd className="text-ink" suppressHydrationWarning>{new Date(selectedMsg.received_at).toLocaleString()}</dd>
                 </dl>
               </div>
 

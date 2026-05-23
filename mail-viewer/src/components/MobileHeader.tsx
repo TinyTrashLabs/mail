@@ -77,17 +77,24 @@ export function MobileHeader({ username, fullName, mailbox, tag, trashView }: Mo
       {/* Dropdown menu */}
       {menuOpen && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop — pointer-events-auto ensures clicks always register,
+              z-40 sits below the menu (z-50) but above page content */}
           <div
-            className="fixed inset-0 bg-ink/20 z-40"
+            className="fixed inset-0 bg-ink/20 z-40 pointer-events-auto"
             onClick={() => setMenuOpen(false)}
+            aria-hidden="true"
           />
           {/* Menu - positioned relative to parent which now has relative class */}
           <div className="absolute left-0 right-0 top-full mt-1 mx-2 bg-cream border border-rule rounded-card shadow-lg z-50 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rule bg-[#f0ede4]">
               <span className="text-xs font-sans font-semibold text-ink-soft uppercase tracking-wide">Mailboxes</span>
-              <button onClick={() => setMenuOpen(false)} className="text-ink-soft hover:text-ink">
-                <X size={14} strokeWidth={2} />
+              {/* Min 44×44 touch target per accessibility guidelines */}
+              <button
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center justify-center w-11 h-11 -mr-3 text-ink-soft hover:text-ink"
+                aria-label="Close menu"
+              >
+                <X size={16} strokeWidth={2} />
               </button>
             </div>
             <nav className="py-1">
