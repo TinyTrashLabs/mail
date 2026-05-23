@@ -37,8 +37,16 @@ function resolveViewerUser(req, res) {
  * Anonymous viewers get empty fragments — they see all messages regardless
  * of any user's trash state.
  */
-export function buildTrashFilter(viewerUser, trashOnly, params) {
-  if (!viewerUser) return { join: '', where: '' };
+export function buildTrashFilter(mailbox, viewerUser, trashOnly, params) {
+  if (mailbox === "shared") {
+    // Shared mailbox: filter on the global flag (set when any user trashes from shared).
+    const where = trashOnly
+      ? `AND m.is_globally_trashed = TRUE`
+      : `AND m.is_globally_trashed = FALSE`;
+    return { join: "", where };
+  }
+  // Personal mailbox: per-user trash state via message_state join.
+  if (!viewerUser) return { join: "", where: "" };
   params.push(viewerUser);
   const userParam = `$${params.length}`;
   const join = `LEFT JOIN message_state ms ON ms.message_id = m.id AND ms.username = ${userParam}`;
@@ -68,7 +76,7 @@ router.get('/messages', async (req, res) => {
   try {
     const params = [requestedMailbox, limit, offset];
     if (tag) params.push(tag);
-    const trash = buildTrashFilter(viewerUser, trashOnly, params);
+    const trash = buildTrashFilter(requestedMailbox, viewerUser, trashOnly, params);
 
     const tagExists = tag
       ? `AND EXISTS (SELECT 1 FROM message_tags WHERE message_id = m.id AND tag = $4)`
@@ -91,7 +99,7 @@ router.get('/messages', async (req, res) => {
     // Count uses the same trash filter, with its own param array.
     const countParams = [requestedMailbox];
     if (tag) countParams.push(tag);
-    const cTrash = buildTrashFilter(viewerUser, trashOnly, countParams);
+    const cTrash = buildTrashFilter(requestedMailbox, viewerUser, trashOnly, countParams);
     const countQuery = tag
       ? `SELECT COUNT(DISTINCT m.id) AS total FROM messages m
          JOIN message_tags mt ON mt.message_id = m.id

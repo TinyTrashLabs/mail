@@ -35,6 +35,10 @@ const PATCH_COLUMNS = ['is_read', 'is_starred', 'is_trashed'];
  * Upserts per-user message state. Returns the updated state row.
  * Route uses /message-states (not /messages/:id/state) to avoid any
  * ordering dependency with messagesRouter's /messages/:id GET route.
+ *
+ * Shared trash: when a message in the 'shared' mailbox has is_trashed set,
+ * we also write is_globally_trashed on the messages row so all viewers see
+ * the message removed from shared — not just the user who trashed it.
  */
 router.patch('/message-states/:id', async (req, res) => {
   if (!checkAuth(req, res)) return;
@@ -65,6 +69,7 @@ router.patch('/message-states/:id', async (req, res) => {
     if (!rows.length || !canReadMessage(rows[0].mailbox, viewerUser)) {
       return res.status(404).json({ error: 'not found' });
     }
+    const mailbox = rows[0].mailbox;
 
     // Build INSERT column list with $-params for each PATCH_COLUMNS member.
     // For columns not in the patch, insert FALSE (the schema default) so the
@@ -94,6 +99,16 @@ router.patch('/message-states/:id', async (req, res) => {
        RETURNING ${returningCols}`,
       values
     );
+
+    // Shared trash: propagate is_trashed to the global flag on the message row
+    // so all users see the message removed from the shared inbox, not just the
+    // user who trashed it. Restoring (is_trashed=false) also clears the global flag.
+    if (mailbox === 'shared' && 'is_trashed' in patch) {
+      await pool.query(
+        'UPDATE messages SET is_globally_trashed = $1 WHERE id = $2',
+        [patch.is_trashed, id]
+      );
+    }
 
     res.json(result.rows[0]);
   } catch (err) {
