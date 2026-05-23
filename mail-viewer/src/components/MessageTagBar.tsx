@@ -6,6 +6,9 @@
  *
  * The AI button calls auto-tag with the message's subject/from/body, then
  * adds the returned tags via the same POST /tags route with source='ai'.
+ *
+ * All setTags calls use the functional form so concurrent removes / adds /
+ * AI completions interleave correctly without dropping each other's edits.
  */
 
 import { useCallback, useState } from 'react';
@@ -20,6 +23,8 @@ interface MessageTagBarProps {
   initialTags: string[];
 }
 
+type Notice = { kind: 'error' | 'info'; text: string } | null;
+
 export function MessageTagBar({
   messageId,
   subject,
@@ -30,35 +35,38 @@ export function MessageTagBar({
   const [tags, setTags] = useState<string[]>(initialTags);
   const [adding, setAdding] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice>(null);
 
   const removeTag = useCallback(async (tag: string) => {
-    const prev = tags;
-    setTags(tags.filter(t => t !== tag));
+    // Functional update keeps in-flight adds/AI from being clobbered
+    setTags(prev => prev.filter(t => t !== tag));
     try {
       const resp = await fetch(`/api/messages/${messageId}/tags?tag=${encodeURIComponent(tag)}`, {
         method: 'DELETE',
       });
       if (!resp.ok) {
-        setTags(prev);
-        setError('Failed to remove tag.');
+        // Revert just this tag if removal failed, without dropping concurrent edits
+        setTags(prev => (prev.includes(tag) ? prev : [...prev, tag].sort()));
+        setNotice({ kind: 'error', text: 'Failed to remove tag.' });
       }
     } catch {
-      setTags(prev);
-      setError('Failed to remove tag.');
+      setTags(prev => (prev.includes(tag) ? prev : [...prev, tag].sort()));
+      setNotice({ kind: 'error', text: 'Failed to remove tag.' });
     }
-  }, [messageId, tags]);
+  }, [messageId]);
 
   const onAdded = useCallback((newTags: string[]) => {
-    const merged = Array.from(new Set([...tags, ...newTags])).sort();
-    setTags(merged);
+    setTags(prev => Array.from(new Set([...prev, ...newTags])).sort());
     setAdding(false);
-    setError(null);
-  }, [tags]);
+    setNotice(null);
+  }, []);
 
   const runAutoTag = useCallback(async () => {
     setAiLoading(true);
-    setError(null);
+    setNotice(null);
+    // Snapshot tags at request time for the existing-tags hint to the model.
+    // The merge below uses functional setTags so any concurrent edits survive.
+    const existingSnapshot = tags;
     try {
       const resp = await fetch('/api/ai/auto-tag', {
         method: 'POST',
@@ -67,36 +75,41 @@ export function MessageTagBar({
           subject,
           from,
           body,
-          existingTags: tags,
+          existingTags: existingSnapshot,
         }),
       });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        setError(json.error || 'AI tagging failed.');
+        setNotice({ kind: 'error', text: json.error || 'AI tagging failed.' });
         return;
       }
       const suggested: string[] = Array.isArray(json.tags) ? json.tags : [];
-      // Filter out tags the message already has
-      const fresh = suggested.filter(t => !tags.includes(t));
-      if (!fresh.length) {
-        setError('AI didn\'t suggest any new tags.');
+      // Filter against the CURRENT tag set (not the snapshot) — user may have
+      // added/removed while AI was thinking.
+      let toPersist: string[] = [];
+      setTags(prev => {
+        toPersist = suggested.filter(t => !prev.includes(t));
+        return prev; // no state change yet; persist first
+      });
+      if (!toPersist.length) {
+        setNotice({ kind: 'info', text: 'AI didn\'t suggest any new tags.' });
         return;
       }
       // Persist via the same /tags route with source='ai'
       const saveResp = await fetch(`/api/messages/${messageId}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: fresh, source: 'ai' }),
+        body: JSON.stringify({ tags: toPersist, source: 'ai' }),
       });
       const saveJson = await saveResp.json().catch(() => ({}));
       if (!saveResp.ok) {
-        setError(saveJson.error || 'Failed to save AI tags.');
+        setNotice({ kind: 'error', text: saveJson.error || 'Failed to save AI tags.' });
         return;
       }
-      const merged = Array.from(new Set([...tags, ...fresh])).sort();
-      setTags(merged);
+      setTags(prev => Array.from(new Set([...prev, ...toPersist])).sort());
+      setNotice(null);
     } catch {
-      setError('AI request failed.');
+      setNotice({ kind: 'error', text: 'AI request failed.' });
     } finally {
       setAiLoading(false);
     }
@@ -139,8 +152,10 @@ export function MessageTagBar({
           {aiLoading ? 'Thinking…' : 'AI tag'}
         </button>
       </div>
-      {error && (
-        <div className="mt-1.5 text-xs text-[#c94b4b] font-sans">{error}</div>
+      {notice && (
+        <div className={`mt-1.5 text-xs font-sans ${notice.kind === 'error' ? 'text-[#c94b4b]' : 'text-ink-soft'}`}>
+          {notice.text}
+        </div>
       )}
       {adding && (
         <AddTagDialog
