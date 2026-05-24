@@ -117,6 +117,67 @@ test.describe('Inbox', () => {
   });
 });
 
+test.describe('Inbox row keyboard and star interactions', () => {
+  test.skip(!process.env.TEST_SESSION_COOKIE, 'Requires TEST_SESSION_COOKIE for authenticated tests');
+
+  let page: Page;
+
+  test.beforeEach(async ({ browser }) => {
+    const context = await browser.newContext();
+    if (process.env.TEST_SESSION_COOKIE) {
+      await context.addCookies([{
+        name: 'next-auth.session-token',
+        value: process.env.TEST_SESSION_COOKIE,
+        domain: new URL(process.env.TEST_BASE_URL || 'http://localhost:3000').hostname,
+        path: '/',
+        httpOnly: true,
+        secure: false,
+      }]);
+    }
+    await mockMailStore(context);
+    page = await context.newPage();
+  });
+
+  test('pressing Enter on a row opens the message', async () => {
+    await page.goto('/inbox');
+    const firstRow = page.locator('[role="row"]').first();
+    await firstRow.focus();
+    await page.keyboard.press('Enter');
+    // URL should gain a ?msg= param or navigate to the message
+    await expect(page).toHaveURL(/msg=\d+|\/inbox\/\d+/);
+  });
+
+  test('pressing Space on a row opens the message', async () => {
+    await page.goto('/inbox');
+    const firstRow = page.locator('[role="row"]').first();
+    await firstRow.focus();
+    await page.keyboard.press('Space');
+    await expect(page).toHaveURL(/msg=\d+|\/inbox\/\d+/);
+  });
+
+  test('pressing Enter inside a child element (search input) does not open a message', async () => {
+    await page.goto('/inbox');
+    const searchInput = page.locator('input[placeholder*="Filter"]');
+    await searchInput.focus();
+    // Type a letter and press Enter — the row onKeyDown guard (target !== currentTarget) must block this
+    await page.keyboard.type('Hello');
+    const urlBefore = page.url();
+    await page.keyboard.press('Enter');
+    // URL must not have changed to a message-open URL
+    expect(page.url()).toBe(urlBefore);
+  });
+
+  test('clicking the star button does not open the message (stopPropagation)', async () => {
+    await page.goto('/inbox');
+    const firstRow = page.locator('[role="row"]').first();
+    const starBtn = firstRow.locator('button[aria-label="Star"], button[aria-label="Unstar"]');
+    await starBtn.click();
+    // Clicking star should NOT navigate away — URL stays at /inbox without a msg param
+    await expect(page).not.toHaveURL(/msg=\d+/);
+    await expect(page).toHaveURL(/\/inbox/);
+  });
+});
+
 test.describe('Message detail', () => {
   test.skip(!process.env.TEST_SESSION_COOKIE, 'Requires TEST_SESSION_COOKIE for authenticated tests');
 

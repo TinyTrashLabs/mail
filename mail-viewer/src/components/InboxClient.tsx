@@ -307,9 +307,15 @@ export function InboxClient({
                 ref={el => { rowRefs.current[idx] = el; }}
                 role="row"
                 onClick={() => openMessage(msg.id)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === 'o') openMessage(msg.id); }}
+                onKeyDown={e => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === 'Enter' || e.key === ' ' || e.key === 'o') {
+                    if (e.key === 'Enter' || e.key === ' ') e.preventDefault();
+                    openMessage(msg.id);
+                  }
+                }}
                 tabIndex={0}
-                className={`w-full text-left flex items-start gap-2 px-3 py-2.5 transition-colors group cursor-pointer ${isSelected ? 'bg-teal/10 border-l-2 border-teal' : isFocused ? 'bg-[#f0ede4]' : 'hover:bg-[#f0ede4]'}`}>
+                className={`flex items-start gap-2 px-3 py-2.5 transition-colors group cursor-pointer ${isSelected ? 'bg-teal/10 border-l-2 border-teal' : isFocused ? 'bg-[#f0ede4]' : 'hover:bg-[#f0ede4]'}`}>
                 {/* Unread dot */}
                 <div className="flex-shrink-0 mt-1.5 w-1.5 h-1.5">
                   {!state.is_read && <div className="w-1.5 h-1.5 rounded-full bg-teal-strong" />}
