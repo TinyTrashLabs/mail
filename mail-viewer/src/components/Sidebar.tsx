@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Inbox, PenSquare, Users, Tag, LogOut, Trash2, Send } from 'lucide-react';
 import { sentMailboxFor, isOwnSentMailbox } from '@/lib/mailbox';
 import { UserAvatar } from '@/components/UserAvatar';
+import { openComposeDrawer } from '@/components/ComposeDrawer';
 
 interface SidebarProps {
   username: string;
@@ -77,11 +78,13 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView
 
       {/* Compose */}
       <div className="px-3 pt-3 pb-2">
-        <Link href="/compose"
-          className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-teal hover:bg-teal-strong text-cream rounded-card text-sm font-sans font-medium transition-colors">
+        <button
+          onClick={() => openComposeDrawer()}
+          className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-teal hover:bg-teal-strong text-cream rounded-card text-sm font-sans font-medium transition-colors"
+        >
           <PenSquare size={14} strokeWidth={2} />
           Compose
-        </Link>
+        </button>
       </div>
 
       {/* Mailboxes */}

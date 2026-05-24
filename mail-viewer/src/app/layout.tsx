@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Provider from './session-provider';
+import DrawerRoot from './drawer-root';
 
 export const metadata: Metadata = {
   title: 'TTL Mail',
@@ -27,7 +28,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="bg-cream text-ink font-serif min-h-screen">
-        <Provider>{children}</Provider>
+        <Provider>
+          {children}
+          <DrawerRoot />
+        </Provider>
       </body>
     </html>
   );
