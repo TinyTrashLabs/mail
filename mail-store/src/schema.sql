@@ -77,3 +77,14 @@ CREATE TABLE IF NOT EXISTS drafts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_drafts_username ON drafts (username, updated_at DESC);
+
+-- Attachment binary content — stored separately from message metadata to keep
+-- the messages table lean. idx is the 0-based position in attachments_meta.
+CREATE TABLE IF NOT EXISTS attachment_data (
+  message_id BIGINT  NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  idx        INTEGER NOT NULL,
+  data       BYTEA   NOT NULL,
+  PRIMARY KEY (message_id, idx)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachment_data_message_id ON attachment_data (message_id);

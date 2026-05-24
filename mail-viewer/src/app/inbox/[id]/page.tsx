@@ -14,8 +14,8 @@ import {
   ArrowLeft,
   Reply,
   Forward,
-  Paperclip,
 } from 'lucide-react';
+import { AttachmentChips } from '@/components/AttachmentChips';
 
 export default async function MessagePage({
   params,
@@ -196,18 +196,9 @@ export default async function MessagePage({
             {msg.attachments_meta.length > 0 && (
               <div className="mt-8 border-t border-rule pt-5">
                 <div className="flex items-center gap-1.5 text-xs font-sans font-semibold text-ink-soft uppercase tracking-wider mb-3">
-                  <Paperclip size={12} strokeWidth={2} />
                   Attachments ({msg.attachments_meta.length})
                 </div>
-                <ul className="space-y-1.5">
-                  {msg.attachments_meta.map((a, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm font-sans">
-                      <Paperclip size={13} strokeWidth={1.75} className="text-ink-soft flex-shrink-0" />
-                      <span className="text-ink">{a.filename}</span>
-                      <span className="text-ink-soft text-xs">({a.contentType}, {a.size} bytes)</span>
-                    </li>
-                  ))}
-                </ul>
+                <AttachmentChips messageId={msg.id} attachments={msg.attachments_meta} />
               </div>
             )}
 

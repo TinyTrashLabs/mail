@@ -19,6 +19,7 @@ import { AISummary } from '@/components/AISummary';
 import { MessageActions } from '@/components/MessageActions';
 import { MessageTagBar } from '@/components/MessageTagBar';
 import { RowContextMenu } from '@/components/RowContextMenu';
+import { AttachmentChips } from '@/components/AttachmentChips';
 import { formatFromAddr, formatDisplayName } from '@/lib/display-name';
 import { openComposeDrawer } from '@/components/ComposeDrawer';
 
@@ -722,15 +723,10 @@ export function InboxClient({
                     <Paperclip size={11} strokeWidth={2} />
                     Attachments ({(selectedMsg.attachments_meta?.length ?? 0)})
                   </div>
-                  <ul className="space-y-1">
-                    {selectedMsg.attachments_meta?.map((a, i) => (
-                      <li key={i} className="flex items-center gap-2 text-xs font-sans">
-                        <Paperclip size={11} strokeWidth={1.75} className="text-ink-soft flex-shrink-0" />
-                        <span className="text-ink truncate">{a.filename}</span>
-                        <span className="text-ink-soft flex-shrink-0">({(a.size / 1024).toFixed(1)}KB)</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <AttachmentChips
+                    messageId={selectedMsg.id}
+                    attachments={selectedMsg.attachments_meta ?? []}
+                  />
                 </div>
               )}
 

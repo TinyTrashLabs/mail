@@ -14,6 +14,8 @@ export function extractFields(parsed, envelopeFrom, envelopeTo) {
     contentType: a.contentType,
     size: a.size,
   }));
+  // Capture raw content buffers for storage; parallel array to attachmentsMeta.
+  const attachmentData = (parsed.attachments || []).map(a => a.content ?? null);
   return {
     mailbox,
     messageId,
@@ -26,5 +28,6 @@ export function extractFields(parsed, envelopeFrom, envelopeTo) {
     textBody: parsed.text || null,
     htmlBody: parsed.html || null,
     attachmentsMeta,
+    attachmentData,
   };
 }
