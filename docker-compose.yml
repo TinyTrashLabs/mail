@@ -36,6 +36,10 @@ services:
     # The CF email worker sends the same secret in every ingest request.
     ports:
       - "127.0.0.1:3025:3025"
+    networks:
+      default:
+        aliases:
+          - mail-store
 
   mail-viewer:
     build: ./mail-viewer
