@@ -541,7 +541,9 @@ export function InboxClient({
                     </button>
                   </div>
                   <pre className="overflow-x-auto p-4 text-[11px] font-mono text-ink leading-relaxed bg-cream whitespace-pre-wrap break-all max-h-[60vh]">
-                    {selectedMsg.html_body || selectedMsg.text_body || '(no body)'}
+                    {/* Cap at 50 KB to prevent page jank on large HTML emails */}
+                    {(selectedMsg.html_body || selectedMsg.text_body || '(no body)').slice(0, 50_000)}
+                    {(selectedMsg.html_body || selectedMsg.text_body || '').length > 50_000 && '\n\n… (truncated at 50 KB)'}
                   </pre>
                 </div>
               ) : (

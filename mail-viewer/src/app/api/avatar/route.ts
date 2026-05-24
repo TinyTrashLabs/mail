@@ -17,17 +17,20 @@ import sharp from 'sharp';
 const AVATAR_DIR = process.env.AVATAR_DIR ?? path.join(process.cwd(), 'data', 'avatars');
 const MAX_BYTES = 4 * 1024 * 1024; // 4 MB upload limit
 
-function avatarPath(username: string): string {
-  // Strip everything that could escape the directory
-  const safe = username.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-  return path.join(AVATAR_DIR, `${safe}.jpg`);
+// Strict allow-list: only alphanumeric + hyphen + underscore, 1-32 chars.
+// This is deliberately tighter than the mailbox PERSONAL set so there's no
+// collision risk between usernames that differ only in non-alphanum chars.
+const SAFE_USERNAME = /^[a-zA-Z0-9_-]{1,32}$/;
+
+function safeAvatarPath(username: string): string | null {
+  if (!SAFE_USERNAME.test(username)) return null;
+  return path.join(AVATAR_DIR, `${username}.jpg`);
 }
 
 export async function GET(req: NextRequest) {
   const username = req.nextUrl.searchParams.get('user') ?? '';
-  if (!username) return NextResponse.json({ error: 'missing user' }, { status: 400 });
-
-  const file = avatarPath(username);
+  const file = safeAvatarPath(username);
+  if (!file) return new NextResponse(null, { status: 404 });
   if (!existsSync(file)) return new NextResponse(null, { status: 404 });
 
   const buf = await fs.readFile(file);
@@ -44,7 +47,8 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const username = (session as { username?: string }).username ?? '';
-  if (!username) return NextResponse.json({ error: 'no username in session' }, { status: 400 });
+  const filePath = safeAvatarPath(username);
+  if (!filePath) return NextResponse.json({ error: 'invalid username' }, { status: 400 });
 
   const contentType = req.headers.get('content-type') ?? '';
   if (!contentType.includes('multipart/form-data')) {
@@ -61,21 +65,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'file too large (max 4 MB)' }, { status: 413 });
   }
 
-  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  if (!allowed.includes(file.type)) {
-    return NextResponse.json({ error: 'unsupported image type' }, { status: 415 });
-  }
-
   const buf = Buffer.from(await file.arrayBuffer());
 
-  // Cover-crop to 256×256, output JPEG q85
-  const processed = await sharp(buf)
-    .resize(256, 256, { fit: 'cover', position: 'centre' })
-    .jpeg({ quality: 85, progressive: true })
-    .toBuffer();
+  // Don't trust client-supplied MIME type — let sharp decode to validate.
+  // Cover-crop to 256×256, output JPEG q85.
+  let processed: Buffer;
+  try {
+    processed = await sharp(buf)
+      .resize(256, 256, { fit: 'cover', position: 'centre' })
+      .jpeg({ quality: 85, progressive: true })
+      .toBuffer();
+  } catch {
+    return NextResponse.json({ error: 'could not decode image' }, { status: 415 });
+  }
 
   await fs.mkdir(AVATAR_DIR, { recursive: true });
-  await fs.writeFile(avatarPath(username), processed);
+  await fs.writeFile(filePath, processed);
 
   return NextResponse.json({ ok: true, user: username });
 }

@@ -12,16 +12,14 @@ export const metadata: Metadata = {
   },
 };
 
-// Lock mobile viewport to device size (Gmail mobile parity).
-// width=device-width sizes the canvas to the device.
-// initialScale=1 prevents iOS zoom-out on landing.
-// maximumScale=1 + userScalable=false disables pinch-zoom on mobile mail.
-// Note: iOS zoom-on-focus is killed by inputs being >=16px — see globals.css.
+// Size viewport to device width and prevent the browser from applying an
+// initial scale different from 1:1. We intentionally do NOT set maximumScale
+// or userScalable — disabling user zoom is a WCAG 1.4.4 violation and is
+// unnecessary once all form inputs are ≥16px (see globals.css), which is what
+// actually prevents iOS Safari from zooming on focus.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: 'cover',
 };
 
