@@ -9,6 +9,21 @@
     font-family: 'Lora', Georgia, serif;
     background-color: #fbfaf6;
     color: #1f2333;
+    /* Avoid auto text inflation on rotation on mobile Safari. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /*
+   * iOS Safari will zoom the viewport on focus of any form control whose
+   * computed font-size is < 16px. Enforce a 16px floor on every editable
+   * surface so focus never triggers the zoom. Tailwind utility classes that
+   * use text-sm (14px) on inputs are overridden here intentionally.
+   */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
   }
 
   /* Prose overrides for email body rendering on light bg */

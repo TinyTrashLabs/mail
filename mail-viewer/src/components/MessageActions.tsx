@@ -127,10 +127,10 @@ export function MessageActions({
   }, [router, replyHref, backHref, toggleStar, toggleTrash, markUnread]);
 
   const buttonCls =
-    'flex items-center gap-1.5 px-3 py-1.5 rounded-card text-sm font-sans transition-colors hover:bg-rule min-h-[36px]';
+    'flex items-center gap-1 px-2 py-1.5 rounded-card text-xs font-sans transition-colors hover:bg-rule whitespace-nowrap flex-shrink-0';
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
+    <div className="flex items-center gap-0.5 flex-nowrap">
       <button
         onClick={toggleStar}
         title={starred ? 'Unstar (s)' : 'Star (s)'}

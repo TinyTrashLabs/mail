@@ -2,8 +2,79 @@ import { Router } from 'express';
 import { simpleParser } from 'mailparser';
 import { pool } from '../db.js';
 import { extractFields } from '../ingest-fields.js';
+import { PERSONAL } from '../mailbox.js';
 
 const router = Router();
+
+/**
+ * Fire-and-forget: post a new-mail notification to the mailbox owner's
+ * Mattermost DM channel via the MM REST API.
+ *
+ * Required env vars (all optional — if absent, skipped silently):
+ *   MM_BASE_URL        e.g. https://mm.tinytrashlabs.com
+ *   MM_BOT_TOKEN       PAT for the @patch bot
+ *   MAIL_VIEWER_URL    e.g. https://mail.tinytrashlabs.com  (for inbox link)
+ */
+// @param {number} messageId - DB row id (integer PK from mail_messages), NOT the RFC Message-ID header.
+async function notifyNewMail({ mailbox, subject, fromAddr, messageId }) {
+  const base = process.env.MM_BASE_URL;
+  const token = process.env.MM_BOT_TOKEN;
+  if (!base || !token) return;
+
+  // Guard 1: enforce safe identifier shape before any external use of mailbox.
+  if (!/^[a-zA-Z0-9_-]{1,32}$/.test(mailbox)) return;
+  // Guard 2: only notify for known personal mailboxes (PERSONAL is an explicit Set).
+  if (!PERSONAL.has(mailbox)) return;
+
+  try {
+    // Resolve MM user by username
+    const userRes = await fetch(`${base}/api/v4/users/username/${encodeURIComponent(mailbox)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!userRes.ok) {
+      console.warn(`[mail-notify] MM user not found for mailbox ${mailbox}: ${userRes.status}`);
+      return;
+    }
+    const user = await userRes.json();
+
+    // Get bot identity
+    const botRes = await fetch(`${base}/api/v4/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!botRes.ok) return;
+    const bot = await botRes.json();
+
+    // Open / resolve DM channel
+    const dmRes = await fetch(`${base}/api/v4/channels/direct`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([bot.id, user.id]),
+    });
+    if (!dmRes.ok) {
+      console.warn(`[mail-notify] DM channel open failed for ${mailbox}: ${dmRes.status}`);
+      return;
+    }
+    const dm = await dmRes.json();
+
+    // Build notification message
+    const viewerBase = process.env.MAIL_VIEWER_URL || 'https://mail.tinytrashlabs.com';
+    // Neutralize Markdown special chars in untrusted fields to prevent link injection.
+    const escapeMd = (s) => s.replace(/[[\]`\\*_~|>&#@!<]/g, '\\$&').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+    const from = escapeMd(fromAddr || '(unknown)');
+    const subj = escapeMd(subject || '(no subject)');
+    const msgId = messageId ? `?mailbox=${encodeURIComponent(mailbox)}&msg=${messageId}` : `?mailbox=${encodeURIComponent(mailbox)}`;
+    const inboxUrl = `${viewerBase}/inbox${msgId}`;
+    const message = `📬 New mail in **${mailbox}**\n**From:** ${from}\n**Subject:** ${subj}\n[Open →](${inboxUrl})`;
+
+    await fetch(`${base}/api/v4/posts`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel_id: dm.id, message }),
+    });
+  } catch (err) {
+    console.warn('[mail-notify] notification error:', err.message);
+  }
+}
 
 router.post('/ingest', async (req, res) => {
   const auth = req.headers.authorization || '';
@@ -46,7 +117,6 @@ router.post('/ingest', async (req, res) => {
         f.mailbox,
       ]
     );
-    // Return existing id on duplicate instead of null
     let id = result.rows[0]?.id ?? null;
     const duplicate = result.rows.length === 0;
     if (id === null && f.messageId) {
@@ -56,6 +126,12 @@ router.post('/ingest', async (req, res) => {
       );
       id = existing.rows[0]?.id ?? null;
     }
+
+    // Notify mailbox owner — fire-and-forget, never blocks response
+    if (!duplicate) {
+      notifyNewMail({ mailbox: f.mailbox, subject: f.subject, fromAddr: f.fromAddr, messageId: id });
+    }
+
     res.json({ id, mailbox: f.mailbox, duplicate });
   } catch (err) {
     console.error('DB insert error:', err);

@@ -13,10 +13,11 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Paperclip, Star, Search, X, HelpCircle, Reply, Forward,
-  Tag, ArrowLeft, ExternalLink,
+  Tag, ArrowLeft, ExternalLink, ChevronDown, ChevronUp, Code2,
 } from 'lucide-react';
 import { AISummary } from '@/components/AISummary';
 import { MessageActions } from '@/components/MessageActions';
+import { formatFromAddr, formatDisplayName } from '@/lib/display-name';
 
 interface Message {
   id: number;
@@ -72,7 +73,9 @@ function formatDate(iso: string) {
 }
 
 function avatarInitial(from: string) {
-  const name = from.split('@')[0] || from;
+  // Use display name initial if parseable, else email local-part
+  const m = from.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+  const name = m ? (m[1].trim() || m[2].split('@')[0]) : from.split('@')[0];
   return (name[0] || '?').toUpperCase();
 }
 
@@ -126,6 +129,9 @@ export function InboxClient({
   const [states, setStates] = useState<Record<string, MessageState>>(initialStates);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
+  // Desktop reading pane: expand full header details / show raw source
+  const [showDetails, setShowDetails] = useState(false);
+  const [showSource, setShowSource] = useState(false);
 
   const changeViewMode = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -174,6 +180,9 @@ export function InboxClient({
     const params = new URLSearchParams(searchParams.toString());
     params.set('msg', String(id));
     startTransition(() => { router.push(`/inbox?${params.toString()}`, { scroll: false }); });
+    // Reset detail/source panels on new message
+    setShowDetails(false);
+    setShowSource(false);
     // Mark read optimistically
     setStates(prev => ({
       ...prev,
@@ -263,8 +272,8 @@ export function InboxClient({
       {/* ── LEFT PANE: message list ── */}
       {/* On mobile: hide when message selected. On desktop: show as narrow pane */}
       <div className={`flex flex-col overflow-hidden border-r border-rule bg-cream transition-all duration-200 ${
-        selectedMsgId 
-          ? 'hidden sm:flex sm:w-80 sm:flex-shrink-0' 
+        selectedMsgId
+          ? 'hidden sm:flex sm:w-80 sm:flex-shrink-0'
           : 'flex-1'
       }`}>
         {/* Toolbar */}
@@ -342,7 +351,7 @@ export function InboxClient({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
                     <span className={`text-xs truncate ${state.is_read ? 'text-ink-soft' : 'text-ink font-semibold'}`}>
-                      {msg.from_addr.split('@')[0]}
+                      {formatFromAddr(msg.from_addr)}
                     </span>
                     <span className="text-xs text-ink-soft flex-shrink-0" suppressHydrationWarning>{formatDate(msg.received_at)}</span>
                   </div>
@@ -404,15 +413,37 @@ export function InboxClient({
               <ArrowLeft size={15} strokeWidth={1.75} />
               <span className="sm:hidden">Back</span>
             </button>
-            <MessageActions
-              messageId={selectedMsg.id}
-              initialStarred={states[String(selectedMsg.id)]?.is_starred ?? false}
-              initialRead={states[String(selectedMsg.id)]?.is_read ?? true}
-              initialTrashed={states[String(selectedMsg.id)]?.is_trashed ?? false}
-              replyHref={replyHref}
-              backHref={`/inbox?mailbox=${mailbox}`}
-            />
+            {/* MessageActions — fixed layout so buttons never wrap/misalign */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <MessageActions
+                messageId={selectedMsg.id}
+                initialStarred={states[String(selectedMsg.id)]?.is_starred ?? false}
+                initialRead={states[String(selectedMsg.id)]?.is_read ?? true}
+                initialTrashed={states[String(selectedMsg.id)]?.is_trashed ?? false}
+                replyHref={replyHref}
+                backHref={`/inbox?mailbox=${mailbox}`}
+              />
+            </div>
             <div className="flex-1" />
+            {/* Desktop-only: details + source toggles */}
+            <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={() => { setShowDetails(v => !v); setShowSource(false); }}
+                className={`flex items-center gap-1 text-xs font-sans px-2 py-1 rounded transition-colors ${showDetails ? 'bg-rule text-ink' : 'text-ink-soft hover:text-ink'}`}
+                title="Show message details"
+              >
+                {showDetails ? <ChevronUp size={12} strokeWidth={2} /> : <ChevronDown size={12} strokeWidth={2} />}
+                Details
+              </button>
+              <button
+                onClick={() => { setShowSource(v => !v); setShowDetails(false); }}
+                className={`flex items-center gap-1 text-xs font-sans px-2 py-1 rounded transition-colors ${showSource ? 'bg-rule text-ink' : 'text-ink-soft hover:text-ink'}`}
+                title="View email source"
+              >
+                <Code2 size={12} strokeWidth={2} />
+                Source
+              </button>
+            </div>
             {/* Tags on selected message - hidden on mobile for space */}
             {(selectedMsg.tags?.length ?? 0) > 0 && (
               <div className="hidden sm:flex items-center gap-1">
@@ -446,34 +477,87 @@ export function InboxClient({
                 <AISummary messageId={selectedMsg.id} subject={selectedMsg.subject} from={selectedMsg.from_addr} body={bodyForAI} />
               )}
 
-              {/* Header card */}
+              {/* Header card — condensed by default, expanded when showDetails */}
               <div className="bg-[#f0ede4] rounded-card p-3 mb-4">
-                <dl className="grid grid-cols-[3.5rem_1fr] sm:grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 text-xs font-sans">
-                  <dt className="font-medium text-ink-soft">From</dt>
-                  <dd className="text-ink break-all">{selectedMsg.from_addr}</dd>
-                  <dt className="font-medium text-ink-soft">To</dt>
-                  <dd className="text-ink break-all">{selectedMsg.to_addrs.map(a => a.address).join(', ')}</dd>
-                  {selectedMsg.cc_addrs.length > 0 && (
-                    <>
-                      <dt className="font-medium text-ink-soft">CC</dt>
-                      <dd className="text-ink break-all">{selectedMsg.cc_addrs.map(a => a.address).join(', ')}</dd>
-                    </>
-                  )}
-                  <dt className="font-medium text-ink-soft">Date</dt>
-                  <dd className="text-ink" suppressHydrationWarning>{new Date(selectedMsg.received_at).toLocaleString()}</dd>
-                </dl>
-              </div>
+                {/* Always-visible summary line */}
+                <div className="flex items-start gap-2">
+                  <div className={`w-8 h-8 rounded-full ${avatarColor(selectedMsg.from_addr)} flex items-center justify-center text-sm font-bold text-cream flex-shrink-0`}>
+                    {avatarInitial(selectedMsg.from_addr)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-sans font-semibold text-ink truncate">
+                        {formatFromAddr(selectedMsg.from_addr)}
+                      </span>
+                      <span className="text-xs text-ink-soft flex-shrink-0" suppressHydrationWarning>
+                        {new Date(selectedMsg.received_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="text-xs text-ink-soft font-sans mt-0.5 truncate">
+                      To: {selectedMsg.to_addrs.map(a => formatDisplayName(a)).join(', ')}
+                      {selectedMsg.cc_addrs.length > 0 && ` · CC: ${selectedMsg.cc_addrs.map(a => formatDisplayName(a)).join(', ')}`}
+                    </div>
+                  </div>
+                </div>
 
-              {/* Body */}
-              <div className="border-t border-rule pt-4 text-sm">
-                {selectedSafeHtml ? (
-                  <div className="prose prose-sm sm:prose max-w-none overflow-x-auto" dangerouslySetInnerHTML={{ __html: selectedSafeHtml }} />
-                ) : selectedMsg.text_body ? (
-                  <pre className="whitespace-pre-wrap font-mono text-xs sm:text-sm text-ink leading-relaxed overflow-x-auto">{selectedMsg.text_body}</pre>
-                ) : (
-                  <p className="text-ink-soft italic text-sm font-sans">No body content.</p>
+                {/* Expanded details — desktop only, toggled via toolbar button */}
+                {showDetails && (
+                  <dl className="mt-3 pt-3 border-t border-rule grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 text-xs font-sans">
+                    <dt className="font-medium text-ink-soft">From</dt>
+                    <dd className="text-ink break-all">{selectedMsg.from_addr}</dd>
+                    <dt className="font-medium text-ink-soft">To</dt>
+                    <dd className="text-ink break-all">{selectedMsg.to_addrs.map(a => `${a.name ? a.name + ' ' : ''}<${a.address}>`).join(', ')}</dd>
+                    {selectedMsg.cc_addrs.length > 0 && (
+                      <>
+                        <dt className="font-medium text-ink-soft">CC</dt>
+                        <dd className="text-ink break-all">{selectedMsg.cc_addrs.map(a => `${a.name ? a.name + ' ' : ''}<${a.address}>`).join(', ')}</dd>
+                      </>
+                    )}
+                    {selectedMsg.message_id && (
+                      <>
+                        <dt className="font-medium text-ink-soft">Message-ID</dt>
+                        <dd className="text-ink-soft break-all font-mono text-[10px]">{selectedMsg.message_id}</dd>
+                      </>
+                    )}
+                    {selectedMsg.in_reply_to && (
+                      <>
+                        <dt className="font-medium text-ink-soft">In-Reply-To</dt>
+                        <dd className="text-ink-soft break-all font-mono text-[10px]">{selectedMsg.in_reply_to}</dd>
+                      </>
+                    )}
+                    <dt className="font-medium text-ink-soft">Mailbox</dt>
+                    <dd className="text-ink font-mono">{selectedMsg.mailbox}</dd>
+                  </dl>
                 )}
               </div>
+
+              {/* Source view — raw HTML/text, desktop only */}
+              {showSource ? (
+                <div className="border border-rule rounded-card overflow-hidden mb-4">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-[#f0ede4] border-b border-rule">
+                    <span className="text-xs font-sans font-medium text-ink-soft uppercase tracking-wider">Email source</span>
+                    <button onClick={() => setShowSource(false)} className="text-ink-soft hover:text-ink">
+                      <X size={12} strokeWidth={2} />
+                    </button>
+                  </div>
+                  <pre className="overflow-x-auto p-4 text-[11px] font-mono text-ink leading-relaxed bg-cream whitespace-pre-wrap break-all max-h-[60vh]">
+                    {/* Cap at 50 KB to prevent page jank on large HTML emails */}
+                    {(selectedMsg.html_body || selectedMsg.text_body || '(no body)').slice(0, 50_000)}
+                    {(selectedMsg.html_body || selectedMsg.text_body || '').length > 50_000 && '\n\n… (truncated at 50 KB)'}
+                  </pre>
+                </div>
+              ) : (
+                /* Body */
+                <div className="border-t border-rule pt-4 text-sm">
+                  {selectedSafeHtml ? (
+                    <div className="prose prose-sm sm:prose max-w-none overflow-x-auto" dangerouslySetInnerHTML={{ __html: selectedSafeHtml }} />
+                  ) : selectedMsg.text_body ? (
+                    <pre className="whitespace-pre-wrap font-mono text-xs sm:text-sm text-ink leading-relaxed overflow-x-auto">{selectedMsg.text_body}</pre>
+                  ) : (
+                    <p className="text-ink-soft italic text-sm font-sans">No body content.</p>
+                  )}
+                </div>
+              )}
 
               {/* Attachments */}
               {(selectedMsg.attachments_meta?.length ?? 0) > 0 && (
