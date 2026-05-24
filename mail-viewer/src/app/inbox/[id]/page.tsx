@@ -6,7 +6,7 @@ import Link from 'next/link';
 import sanitizeHtml from 'sanitize-html';
 import { Sidebar } from '@/components/Sidebar';
 import { AISummary } from '@/components/AISummary';
-import { MessageActions } from '@/components/MessageActions';
+import { StandaloneMessageActions } from '@/components/StandaloneMessageActions';
 import { MessageTagBar } from '@/components/MessageTagBar';
 import { stripHtml } from '@/lib/ai-utils';
 import { formatFromAddr, formatDisplayName } from '@/lib/display-name';
@@ -103,7 +103,7 @@ export default async function MessagePage({
             <ArrowLeft size={15} strokeWidth={1.75} />
             Back
           </Link>
-          <MessageActions
+          <StandaloneMessageActions
             messageId={msg.id}
             initialStarred={initialStarred}
             initialRead={initialRead}

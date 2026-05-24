@@ -13,13 +13,19 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Paperclip, Star, Search, X, HelpCircle, Reply, Forward,
-  Tag, ArrowLeft, ExternalLink, ChevronDown, ChevronUp, Code2,
+  Tag, ArrowLeft, ExternalLink, ChevronDown, ChevronUp, Code2, MoreHorizontal,
 } from 'lucide-react';
 import { AISummary } from '@/components/AISummary';
 import { MessageActions } from '@/components/MessageActions';
 import { MessageTagBar } from '@/components/MessageTagBar';
+import { RowContextMenu } from '@/components/RowContextMenu';
 import { formatFromAddr, formatDisplayName } from '@/lib/display-name';
 import { openComposeDrawer } from '@/components/ComposeDrawer';
+
+// Dwell time before auto-marking a selected message as read. Long enough to
+// let the user click → realize → click away without accidentally clobbering
+// their unread state, short enough that a real read fires before they switch.
+const READ_DWELL_MS = 2000;
 
 interface Message {
   id: number;
@@ -157,6 +163,18 @@ export function InboxClient({
     [states]
   );
 
+  // Ref mirror of `states` so timers/handlers fired from inside setTimeout
+  // closures can read the LATEST snapshot instead of the one captured at
+  // schedule time. Without this, a fast Shift+U between selection and the
+  // 2s timer fire could be clobbered by the timer setting is_read back.
+  const statesRef = useRef(states);
+  useEffect(() => { statesRef.current = states; }, [states]);
+  const getStateLatest = useCallback(
+    (id: number): MessageState =>
+      statesRef.current[String(id)] ?? { is_read: false, is_starred: false, is_trashed: false },
+    []
+  );
+
   const filtered = messages.filter((msg) => {
     if (viewMode === 'unread' && getState(msg.id).is_read) return false;
     if (viewMode === 'starred' && !getState(msg.id).is_starred) return false;
@@ -178,25 +196,25 @@ export function InboxClient({
     return { msg, threadCount: count, isThreadHead: isHead };
   });
 
-  const openMessage = useCallback((id: number) => {
+  const openMessage = useCallback((id: number, opts?: { replace?: boolean }) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('msg', String(id));
-    startTransition(() => { router.push(`/inbox?${params.toString()}`, { scroll: false }); });
+    const url = `/inbox?${params.toString()}`;
+    startTransition(() => {
+      // Use replace for keyboard nav so holding ArrowDown doesn't spam
+      // browser history with one entry per row. Clicks still push.
+      if (opts?.replace) {
+        router.replace(url, { scroll: false });
+      } else {
+        router.push(url, { scroll: false });
+      }
+    });
     // Reset detail/source panels on new message
     setShowDetails(false);
     setShowSource(false);
-    // Mark read optimistically
-    setStates(prev => ({
-      ...prev,
-      [String(id)]: {
-        ...(prev[String(id)] ?? { is_read: false, is_starred: false, is_trashed: false }),
-        is_read: true,
-      },
-    }));
-    fetch(`/api/message-states/${id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_read: true }),
-    }).catch(() => {});
+    // Mark-read is now handled by the dwell timer effect below — selecting
+    // a message and immediately clicking away should NOT flip the unread dot
+    // off. Gmail does the same (about a second of dwell).
   }, [router, searchParams]);
 
   const closePane = useCallback(() => {
@@ -223,12 +241,124 @@ export function InboxClient({
     patchState(id, { is_starred: !getState(id).is_starred });
   }, [getState, patchState]);
 
+  // Ref to the pending dwell timer — declared before the handlers that may
+  // need to cancel it (markUnread cancels it explicitly so the timer doesn't
+  // undo the user's action moments after they made it).
+  const readTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Action handlers wired into MessageActions + RowContextMenu. They take a
+  // raw id (not an event) so they're usable both from button clicks and
+  // keyboard shortcuts. Use getStateLatest so handlers invoked from stale
+  // closures (e.g. context-menu rendered with snapshot props) still see the
+  // current state.
+  const handleToggleStar = useCallback((id: number) => {
+    patchState(id, { is_starred: !getStateLatest(id).is_starred });
+  }, [getStateLatest, patchState]);
+
+  const handleToggleRead = useCallback((id: number) => {
+    patchState(id, { is_read: !getStateLatest(id).is_read });
+  }, [getStateLatest, patchState]);
+
+  const handleMarkUnread = useCallback((id: number) => {
+    patchState(id, { is_read: false });
+    // Cancel any pending dwell-mark-read for this message so the timer
+    // doesn't undo the user's explicit unread action.
+    if (readTimerRef.current) {
+      clearTimeout(readTimerRef.current);
+      readTimerRef.current = null;
+    }
+    // Bounce back to list — the user marked unread to deal with later
+    if (selectedMsgId === id) closePane();
+  }, [patchState, selectedMsgId, closePane]);
+
+  const handleToggleTrash = useCallback((id: number) => {
+    const next = !getStateLatest(id).is_trashed;
+    patchState(id, { is_trashed: next });
+    // On trash, bounce back to inbox if this row is currently open
+    if (next && selectedMsgId === id) closePane();
+  }, [getStateLatest, patchState, selectedMsgId, closePane]);
+
+  // Auto-mark-read after a dwell on a selected message. Clears if the user
+  // moves to another message (or closes the pane) before the timer fires.
+  useEffect(() => {
+    if (readTimerRef.current) {
+      clearTimeout(readTimerRef.current);
+      readTimerRef.current = null;
+    }
+    if (!selectedMsgId) return;
+    if (getStateLatest(selectedMsgId).is_read) return;
+    readTimerRef.current = setTimeout(() => {
+      // Re-check at fire time via the ref — user may have marked unread
+      // (or another fast PATCH may have flipped it) since we scheduled.
+      // Reading from statesRef guarantees we see the latest snapshot,
+      // not the one captured at setTimeout-schedule time.
+      if (!getStateLatest(selectedMsgId).is_read) {
+        patchState(selectedMsgId, { is_read: true });
+      }
+      readTimerRef.current = null;
+    }, READ_DWELL_MS);
+    return () => {
+      if (readTimerRef.current) {
+        clearTimeout(readTimerRef.current);
+        readTimerRef.current = null;
+      }
+    };
+    // We intentionally depend only on selectedMsgId — re-running on every
+    // states change would reset the timer on each toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMsgId]);
+
+  // Auto-open the most recent message when arriving at the inbox without
+  // ?msg= in the URL — desktop only (mobile users see the list first).
+  // Depend on threaded.length so the effect re-runs once data hydrates;
+  // the ref guard ensures it still only fires once per mount.
+  const autoOpenedRef = useRef(false);
+  const firstMsgId = threaded[0]?.msg.id;
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (selectedMsgId) return;
+    if (!firstMsgId) return;
+    if (typeof window === 'undefined') return;
+    if (window.innerWidth < 640) return; // sm breakpoint — mobile shows list
+    autoOpenedRef.current = true;
+    openMessage(firstMsgId);
+  }, [firstMsgId, selectedMsgId, openMessage]);
+
+  // Row context menu state — used by both `…` overflow button and right-click
+  const [ctxMenu, setCtxMenu] = useState<{ id: number; x: number; y: number } | null>(null);
+
+  const openCtxFor = useCallback((id: number, x: number, y: number) => {
+    setCtxMenu({ id, x, y });
+  }, []);
+  const closeCtx = useCallback(() => setCtxMenu(null), []);
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).contentEditable === 'true') {
         if (e.key === 'Escape') { setSearchQuery(''); (e.target as HTMLInputElement).blur?.(); }
+        return;
+      }
+      // ArrowUp/Down work as aliases for j/k. preventDefault so the page
+      // doesn't also scroll while the user is navigating the list.
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocusedIdx(i => {
+          const next = Math.min(i + 1, threaded.length - 1);
+          // replace:true so holding ArrowDown doesn't spam browser history
+          if (next >= 0 && threaded[next]) openMessage(threaded[next].msg.id, { replace: true });
+          return next;
+        });
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusedIdx(i => {
+          const next = Math.max(i - 1, 0);
+          if (next >= 0 && threaded[next]) openMessage(threaded[next].msg.id, { replace: true });
+          return next;
+        });
         return;
       }
       switch (e.key) {
@@ -336,6 +466,10 @@ export function InboxClient({
                 ref={el => { rowRefs.current[idx] = el; }}
                 role="row"
                 onClick={() => openMessage(msg.id)}
+                onContextMenu={e => {
+                  e.preventDefault();
+                  openCtxFor(msg.id, e.clientX, e.clientY);
+                }}
                 onKeyDown={e => {
                   if (e.target !== e.currentTarget) return;
                   if (e.key === 'Enter' || e.key === ' ' || e.key === 'o') {
@@ -389,6 +523,21 @@ export function InboxClient({
                   {(msg.attachments_meta?.length ?? 0) > 0 && (
                     <Paperclip size={11} className="text-ink-soft" strokeWidth={1.75} />
                   )}
+                  {/* Overflow menu — appears on row hover. Anchors the menu at
+                      the button's lower-right corner via getBoundingClientRect. */}
+                  <button
+                    type="button"
+                    aria-label="Message actions"
+                    title="More actions"
+                    onClick={e => {
+                      e.stopPropagation();
+                      const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      openCtxFor(msg.id, r.right, r.bottom);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity cursor-pointer"
+                  >
+                    <MoreHorizontal size={14} strokeWidth={1.75} className="text-ink-soft hover:text-ink" />
+                  </button>
                 </div>
               </div>
             );
@@ -423,11 +572,13 @@ export function InboxClient({
             <div className="flex items-center gap-1 flex-shrink-0">
               <MessageActions
                 messageId={selectedMsg.id}
-                initialStarred={states[String(selectedMsg.id)]?.is_starred ?? false}
-                initialRead={states[String(selectedMsg.id)]?.is_read ?? true}
-                initialTrashed={states[String(selectedMsg.id)]?.is_trashed ?? false}
+                starred={getState(selectedMsg.id).is_starred}
+                trashed={getState(selectedMsg.id).is_trashed}
                 replyHref={replyHref}
                 backHref={`/inbox?mailbox=${mailbox}`}
+                onToggleStar={handleToggleStar}
+                onMarkUnread={handleMarkUnread}
+                onToggleTrash={handleToggleTrash}
               />
             </div>
             <div className="flex-1" />
@@ -620,17 +771,51 @@ export function InboxClient({
               <h2 className="font-serif font-semibold text-ink">Keyboard shortcuts</h2>
               <button onClick={() => setShowHelp(false)} className="text-ink-soft hover:text-ink"><X size={16} strokeWidth={2} /></button>
             </div>
-            <dl className="grid grid-cols-[3.5rem_1fr] gap-x-4 gap-y-2 text-sm font-sans">
-              {[['j / k','Navigate'], ['Enter','Open in pane'], ['s','Star selected'], ['r','Reply (pane)'], ['/','Search'], ['Esc','Close pane'], ['?','This help']].map(([k, d]) => (
+            <dl className="grid grid-cols-[4.5rem_1fr] gap-x-4 gap-y-2 text-sm font-sans">
+              {[
+                ['↑ ↓ / j k', 'Navigate'],
+                ['Enter', 'Open in pane'],
+                ['s', 'Star selected'],
+                ['Shift+U', 'Mark unread'],
+                ['#', 'Trash'],
+                ['r', 'Reply (pane)'],
+                ['/', 'Search'],
+                ['Esc', 'Close pane'],
+                ['?', 'This help'],
+              ].map(([k, d]) => (
                 <Fragment key={k}>
                   <dt className="font-mono text-teal-strong font-medium">{k}</dt>
                   <dd className="text-ink-soft">{d}</dd>
                 </Fragment>
               ))}
             </dl>
+            <p className="mt-4 text-xs text-ink-soft">Right-click a row for more actions.</p>
           </div>
         </div>
       )}
+
+      {/* Context menu popover — anchored at click coords, closes on outside click */}
+      {ctxMenu && (() => {
+        const s = getState(ctxMenu.id);
+        return (
+          <RowContextMenu
+            x={ctxMenu.x}
+            y={ctxMenu.y}
+            isRead={s.is_read}
+            isStarred={s.is_starred}
+            isTrashed={s.is_trashed}
+            onClose={closeCtx}
+            onToggleRead={() => handleToggleRead(ctxMenu.id)}
+            onToggleStar={() => handleToggleStar(ctxMenu.id)}
+            onToggleTrash={() => handleToggleTrash(ctxMenu.id)}
+            onOpenNewTab={() => {
+              if (typeof window !== 'undefined') {
+                window.open(`/inbox/${ctxMenu.id}?mailbox=${encodeURIComponent(mailbox)}`, '_blank', 'noopener');
+              }
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
