@@ -58,8 +58,10 @@ function RichToolbar({ onFormat }: { onFormat: (cmd: string, val?: string) => vo
       </button>
       <button type="button" onMouseDown={e => {
         e.preventDefault();
-        const url = prompt('URL:');
-        if (url) onFormat('createLink', url);
+        const raw = prompt('URL:');
+        // Reject javascript: and data: URLs to prevent XSS via execCommand('createLink')
+        if (raw && /^(https?|mailto):/i.test(raw.trim())) onFormat('createLink', raw.trim());
+        else if (raw) alert('Only http://, https://, and mailto: URLs are allowed.');
       }} className="p-1 rounded hover:bg-rule text-ink-soft hover:text-ink transition-colors" title="Link">
         <Link2 size={12} strokeWidth={2} />
       </button>
@@ -177,7 +179,9 @@ export function ComposeDrawer() {
       localStorage.setItem('mail_draft', JSON.stringify({ to, cc, bcc, subject, body: text, savedAt: new Date().toISOString() }));
       setSavedDraft(true);
       setTimeout(() => setSavedDraft(false), 2000);
-    } catch {}
+    } catch {
+      setError('Could not save draft — storage may be full or blocked.');
+    }
   }
 
   async function send() {
