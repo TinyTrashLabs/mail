@@ -20,11 +20,10 @@ async function notifyNewMail({ mailbox, subject, fromAddr, messageId }) {
   const token = process.env.MM_BOT_TOKEN;
   if (!base || !token) return;
 
-  // Guard 1: only notify for known personal mailboxes (PERSONAL is an explicit Set)
-  if (!PERSONAL.has(mailbox)) return;
-  // Guard 2: enforce safe identifier shape — PERSONAL values are hand-curated but
-  // this ensures nothing unusual can reach the MM URL even if the set drifts.
+  // Guard 1: enforce safe identifier shape before any external use of mailbox.
   if (!/^[a-zA-Z0-9_-]{1,32}$/.test(mailbox)) return;
+  // Guard 2: only notify for known personal mailboxes (PERSONAL is an explicit Set).
+  if (!PERSONAL.has(mailbox)) return;
 
   try {
     // Resolve MM user by username

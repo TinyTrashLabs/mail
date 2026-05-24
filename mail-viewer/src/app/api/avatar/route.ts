@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(buf, {
     headers: {
       'Content-Type': 'image/jpeg',
-      'Cache-Control': 'private, max-age=300, stale-while-revalidate=60',
+      'Cache-Control': 'no-store',
     },
   });
 }
