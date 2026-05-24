@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { PenSquare, ChevronDown, Inbox, Users, Trash2, X, Tag, Menu, LogOut } from 'lucide-react';
+import { PenSquare, ChevronDown, Inbox, Users, Trash2, X, Tag, Menu, LogOut, Send } from 'lucide-react';
+import { sentMailboxFor, isOwnSentMailbox } from '@/lib/mailbox';
 
 interface MobileHeaderProps {
   username: string;
@@ -46,10 +47,12 @@ export function MobileHeader({ username, fullName, mailbox, tag, trashView }: Mo
     if (trashView) return 'Trash';
     if (tag) return `#${tag}`;
     if (mailbox === 'shared') return 'Shared';
+    if (username && isOwnSentMailbox(mailbox, username)) return 'Sent';
     if (mailbox === username) return displayName ? `${displayName}'s` : 'Personal';
     return mailbox;
   };
 
+  const sentBox = username ? sentMailboxFor(username) : '';
   const navItems = [
     ...(username
       ? [{
@@ -65,6 +68,14 @@ export function MobileHeader({ username, fullName, mailbox, tag, trashView }: Mo
       icon: Users,
       active: mailbox === 'shared' && !tag && !trashView
     },
+    ...(sentBox
+      ? [{
+          label: 'Sent',
+          href: `/inbox?mailbox=${encodeURIComponent(sentBox)}`,
+          icon: Send,
+          active: isOwnSentMailbox(mailbox, username) && !tag && !trashView,
+        }]
+      : []),
     {
       label: 'Trash',
       href: `/inbox?mailbox=${encodeURIComponent(baseMailbox)}&trash=1`,

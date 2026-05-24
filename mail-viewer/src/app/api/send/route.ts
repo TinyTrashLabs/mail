@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
+import { persistSent } from '@/lib/mail-store';
 
 const FROM_DOMAIN = process.env.RESEND_FROM_DOMAIN || 'tinytrashlabs.com';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -112,5 +113,24 @@ export async function POST(req: NextRequest) {
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 502 });
+
+  // Best-effort: persist to <username>-sent so it shows in the Sent mailbox.
+  // Failures here must NOT fail the send response — the mail already went out.
+  try {
+    await persistSent(username, {
+      messageId: data?.id ?? null,
+      from,
+      to,
+      cc,
+      bcc,
+      subject,
+      text: bodyText,
+      html: bodyHtml ?? null,
+      sentAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[send] persistSent failed (mail still sent):', err);
+  }
+
   return NextResponse.json({ id: data?.id });
 }

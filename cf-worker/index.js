@@ -27,6 +27,20 @@ function bytesToBase64(bytes) {
 
 export default {
   async email(message, env) {
+    // 1) Forward FIRST so gmail backup never depends on mail-store being up.
+    //    Email Routing requires the destination to be verified at the account
+    //    level; if FORWARD_TO is unset we silently skip and rely on storage.
+    if (env.FORWARD_TO) {
+      try {
+        await message.forward(env.FORWARD_TO);
+      } catch (err) {
+        // A forward failure (e.g. destination not yet verified for this
+        // address) should NOT swallow ingest — log and continue.
+        console.log(`forward to ${env.FORWARD_TO} failed: ${err && err.message}`);
+      }
+    }
+
+    // 2) Slurp raw bytes once for ingest.
     const chunks = [];
     const reader = message.raw.getReader();
     while (true) {

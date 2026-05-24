@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Inbox, PenSquare, Users, Tag, LogOut, Trash2 } from 'lucide-react';
+import { Inbox, PenSquare, Users, Tag, LogOut, Trash2, Send } from 'lucide-react';
+import { sentMailboxFor, isOwnSentMailbox } from '@/lib/mailbox';
 
 interface SidebarProps {
   username: string;
@@ -38,11 +39,15 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView
     return () => { cancel = true; };
   }, [mailbox]);
 
+  const sentBox = username ? sentMailboxFor(username) : '';
   const navItems = [
     ...(username
       ? [{ label: `${displayName}'s inbox`, sub: `${username}@`, href: `/inbox?mailbox=${username}`, icon: Inbox, active: mailbox === username && !activeTag && !trashView }]
       : []),
     { label: 'Shared', sub: 'team mail', href: '/inbox?mailbox=shared', icon: Users, active: mailbox === 'shared' && !activeTag && !trashView },
+    ...(sentBox
+      ? [{ label: 'Sent', sub: 'mail you sent', href: `/inbox?mailbox=${encodeURIComponent(sentBox)}`, icon: Send, active: isOwnSentMailbox(mailbox, username) && !activeTag && !trashView }]
+      : []),
     { label: 'Trash', sub: 'recently deleted', href: `/inbox?mailbox=${encodeURIComponent(mailbox)}&trash=1`, icon: Trash2, active: !!trashView },
   ];
 

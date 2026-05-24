@@ -101,6 +101,41 @@ export async function fetchMessageStates(ids: number[], viewerUser: string): Pro
   return resp.json();
 }
 
+/**
+ * Persist a record of a just-sent message into the viewer user's Sent mailbox.
+ * Best-effort: callers should NOT block a successful Resend response on this.
+ * BCC recipients are accepted but the store discards them server-side for
+ * privacy — the sent row reveals only To/CC.
+ */
+export async function persistSent(
+  viewerUser: string,
+  payload: {
+    messageId?: string | null;
+    from: string;
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    text: string;
+    html?: string | null;
+    sentAt?: string;
+  }
+): Promise<{ id: number | null; mailbox: string; duplicate: boolean }> {
+  const url = `${STORE_URL}/sent`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${VIEWER_SECRET}`,
+      'X-Viewer-User': mintViewerToken(viewerUser),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+  if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
+  return resp.json();
+}
+
 export async function patchMessageState(
   id: number,
   patch: Partial<MessageState>,
