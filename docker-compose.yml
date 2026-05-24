@@ -45,6 +45,21 @@ services:
         aliases:
           - mail-store
 
+  mail-store-drift-guard:
+    build: ./mail-store
+    restart: unless-stopped
+    command: ["node", "src/healthcheck/drift-guard.js"]
+    depends_on:
+      mail-store:
+        condition: service_healthy
+    environment:
+      INGEST_SECRET: ${INGEST_SECRET}
+      INGEST_ENDPOINT: ${INGEST_ENDPOINT:-https://mail-ingest.tinytrashlabs.com}
+      MM_BASE_URL: ${MM_BASE_URL:-}
+      MM_BOT_TOKEN: ${MM_BOT_TOKEN:-}
+      DRIFT_ALERT_CHANNEL: ${DRIFT_ALERT_CHANNEL:-it-help}
+      CHECK_INTERVAL_MS: ${DRIFT_CHECK_INTERVAL_MS:-600000}
+
   mail-viewer:
     build: ./mail-viewer
     restart: unless-stopped
