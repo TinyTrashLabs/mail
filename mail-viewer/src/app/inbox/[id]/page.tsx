@@ -146,8 +146,13 @@ export default async function MessagePage({
             <div className="bg-[#f0ede4] rounded-card p-4 mb-6">
               <dl className="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1.5 text-sm font-sans">
                 <dt className="font-medium text-ink-soft">From</dt>
-                <dd className="text-ink break-all">{formatFromAddr(msg.from_addr)}
-                  <span className="ml-1 text-ink-soft text-xs">&lt;{msg.from_addr.match(/<([^>]+)>/)?.[1] ?? msg.from_addr}&gt;</span>
+                <dd className="text-ink break-all">
+                  {formatFromAddr(msg.from_addr)}
+                  {/* Show raw address in parens when it differs from the display name */}
+                  {(() => {
+                    const addr = msg.from_addr.match(/<([^>]+)>/)?.[1];
+                    return addr ? <span className="ml-1 text-ink-soft text-xs">&lt;{addr}&gt;</span> : null;
+                  })()}
                 </dd>
                 <dt className="font-medium text-ink-soft">To</dt>
                 <dd className="text-ink break-all">{msg.to_addrs.map((a) => formatDisplayName(a)).join(', ')}</dd>

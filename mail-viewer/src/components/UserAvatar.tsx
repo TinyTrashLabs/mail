@@ -62,7 +62,6 @@ export function UserAvatar({ username, displayName, size = 32, editable = false,
     }
   }
 
-  const sizeClass = `w-[${size}px] h-[${size}px]`;
   const roundedCls = 'rounded-full overflow-hidden flex-shrink-0';
   const bgCls = avatarBg(username);
 
