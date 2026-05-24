@@ -15,6 +15,7 @@ const router = Router();
  *   MM_BOT_TOKEN       PAT for the @patch bot
  *   MAIL_VIEWER_URL    e.g. https://mail.tinytrashlabs.com  (for inbox link)
  */
+// @param {number} messageId - DB row id (integer PK from mail_messages), NOT the RFC Message-ID header.
 async function notifyNewMail({ mailbox, subject, fromAddr, messageId }) {
   const base = process.env.MM_BASE_URL;
   const token = process.env.MM_BOT_TOKEN;

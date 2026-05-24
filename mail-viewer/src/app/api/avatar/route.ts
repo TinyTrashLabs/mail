@@ -34,13 +34,16 @@ export async function GET(req: NextRequest) {
   const username = req.nextUrl.searchParams.get('user') ?? '';
   const file = safeAvatarPath(username);
   if (!file) return new NextResponse(null, { status: 404 });
+  // Defense-in-depth: confirm resolved path stays within AVATAR_DIR even though
+  // SAFE_USERNAME regex already makes traversal impossible.
+  if (path.relative(AVATAR_DIR, file).startsWith('..')) return new NextResponse(null, { status: 404 });
   if (!existsSync(file)) return new NextResponse(null, { status: 404 });
 
   const buf = await fs.readFile(file);
   return new NextResponse(buf, {
     headers: {
       'Content-Type': 'image/jpeg',
-      'Cache-Control': 'no-store',
+      'Cache-Control': 'private, max-age=300',
     },
   });
 }
@@ -54,6 +57,11 @@ export async function POST(req: NextRequest) {
   // has an unexpected shape (e.g. OAuth sub instead of plain username).
   const filePath = safeAvatarPath(username);
   if (!filePath) return NextResponse.json({ error: 'invalid username' }, { status: 400 });
+  // Defense-in-depth path containment — SAFE_USERNAME already prevents traversal
+  // but verify the resolved path stays within AVATAR_DIR.
+  if (path.relative(AVATAR_DIR, filePath).startsWith('..')) {
+    return NextResponse.json({ error: 'invalid username' }, { status: 400 });
+  }
   // Only PERSONAL_MAILBOXES members may upload — prevents arbitrary auth'd users
   // (e.g. a future shared-mailbox account) from writing to AVATAR_DIR.
   if (!PERSONAL_MAILBOXES.has(username)) {
