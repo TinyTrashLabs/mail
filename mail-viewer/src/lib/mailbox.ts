@@ -7,7 +7,7 @@
  * silently hit a 403 with no visible feedback.
  */
 export const PERSONAL_MAILBOXES = new Set([
-  'david', 'shane', 'derek', 'ryan', 'patchtest',
+  'david', 'shane', 'derek', 'ryan', 'patch', 'patchtest',
 ]);
 
 export function isValidMailbox(name: string | undefined | null, viewerUser: string): boolean {

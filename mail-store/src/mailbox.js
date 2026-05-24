@@ -1,5 +1,5 @@
 /** Personal mailbox names — only these get per-user scoping in the viewer. */
-export const PERSONAL = new Set(['david', 'shane', 'derek', 'ryan', 'patchtest']);
+export const PERSONAL = new Set(['david', 'shane', 'derek', 'ryan', 'patch', 'patchtest']);
 
 /**
  * Resolve which mailbox an incoming message belongs to.
