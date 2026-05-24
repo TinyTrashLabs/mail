@@ -18,6 +18,7 @@ import {
 import { AISummary } from '@/components/AISummary';
 import { MessageActions } from '@/components/MessageActions';
 import { formatFromAddr, formatDisplayName } from '@/lib/display-name';
+import { openComposeDrawer } from '@/components/ComposeDrawer';
 
 interface Message {
   id: number;
@@ -243,7 +244,11 @@ export function InboxClient({
           break;
         case 'r':
           if (selectedMsg) {
-            router.push(`/compose?replyTo=${encodeURIComponent(selectedMsg.from_addr)}&subject=${encodeURIComponent(`Re: ${selectedMsg.subject}`)}&inReplyTo=${encodeURIComponent(selectedMsg.message_id || '')}`);
+            openComposeDrawer({
+              to: selectedMsg.from_addr,
+              subject: `Re: ${selectedMsg.subject}`,
+              inReplyTo: selectedMsg.message_id || '',
+            });
           }
           break;
         case '/': e.preventDefault(); searchRef.current?.focus(); break;
@@ -580,14 +585,22 @@ export function InboxClient({
 
               {/* Reply / Forward */}
               <div className="mt-6 pt-4 border-t border-rule flex flex-wrap gap-2">
-                <Link href={replyHref}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal hover:bg-teal-strong text-cream rounded-card text-xs font-sans font-medium transition-colors">
+                <button
+                  onClick={() => openComposeDrawer({
+                    to: selectedMsg.from_addr,
+                    subject: `Re: ${selectedMsg.subject}`,
+                    inReplyTo: selectedMsg.message_id || '',
+                  })}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal hover:bg-teal-strong text-cream rounded-card text-xs font-sans font-medium transition-colors"
+                >
                   <Reply size={12} strokeWidth={2} /> Reply
-                </Link>
-                <Link href={`/compose?subject=${encodeURIComponent(`Fwd: ${selectedMsg.subject}`)}`}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rule hover:bg-[#d8d4cb] text-ink rounded-card text-xs font-sans transition-colors">
+                </button>
+                <button
+                  onClick={() => openComposeDrawer({ subject: `Fwd: ${selectedMsg.subject}` })}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rule hover:bg-[#d8d4cb] text-ink rounded-card text-xs font-sans transition-colors"
+                >
                   <Forward size={12} strokeWidth={2} /> Forward
-                </Link>
+                </button>
               </div>
             </div>
           </div>
