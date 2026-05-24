@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
   // Cover-crop to 256×256, output JPEG q85.
   let processed: Buffer;
   try {
-    processed = await sharp(buf)
+    processed = await sharp(buf, { limitInputPixels: 4096 * 4096 })
       .resize(256, 256, { fit: 'cover', position: 'centre' })
       .jpeg({ quality: 85, progressive: true })
       .toBuffer();
