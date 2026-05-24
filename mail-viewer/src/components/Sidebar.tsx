@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Inbox, PenSquare, Users, Tag, LogOut, Trash2, Send, FileText } from 'lucide-react';
 import { sentMailboxFor, isOwnSentMailbox } from '@/lib/mailbox';
+import { titleCase } from '@/lib/display-name';
 import { UserAvatar } from '@/components/UserAvatar';
 import { openComposeDrawer } from '@/components/ComposeDrawer';
 
 interface SidebarProps {
   username: string;
   fullName?: string;
+  email?: string;
   mailbox: string;
   tag?: string;
   trashView?: boolean;
@@ -24,9 +26,9 @@ function tagDot(tag: string) {
   return TAG_DOT_PALETTE[h % TAG_DOT_PALETTE.length];
 }
 
-export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView, draftsView }: SidebarProps) {
+export function Sidebar({ username, fullName, email, mailbox, tag: activeTag, trashView, draftsView }: SidebarProps) {
   const [tags, setTags] = useState<TagRow[]>([]);
-  const displayName = (fullName && fullName !== username) ? fullName : username;
+  const displayName = (fullName && fullName !== username) ? fullName : titleCase(username);
 
   // Pull the live tag list for the current mailbox so the sidebar reflects
   // reality (not a hardcoded constant). Cached briefly on the API side.
@@ -45,7 +47,7 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView
   const sentBox = username ? sentMailboxFor(username) : '';
   const navItems = [
     ...(username
-      ? [{ label: `${displayName}'s inbox`, sub: `${username}@`, href: `/inbox?mailbox=${username}`, icon: Inbox, active: mailbox === username && !activeTag && !trashView && !draftsView }]
+      ? [{ label: `${displayName}'s inbox`, sub: email || `${username}@`, href: `/inbox?mailbox=${username}`, icon: Inbox, active: mailbox === username && !activeTag && !trashView && !draftsView }]
       : []),
     { label: 'Shared', sub: 'team mail', href: '/inbox?mailbox=shared', icon: Users, active: mailbox === 'shared' && !activeTag && !trashView && !draftsView },
     ...(sentBox

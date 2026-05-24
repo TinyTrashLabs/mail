@@ -35,12 +35,13 @@ export default async function TagsPage({
   const username = (session as { username?: string }).username ?? '';
   const mailbox = resolveMailbox(searchParams.mailbox, username);
   const fullName = (session as { user?: { name?: string } }).user?.name ?? username;
+  const email = (session as { user?: { email?: string } }).user?.email ?? undefined;
 
   const tags = await fetchTagsForMailbox(mailbox, username);
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar username={username} fullName={fullName} mailbox={mailbox} />
+      <Sidebar username={username} fullName={fullName} email={email} mailbox={mailbox} />
       <main className="flex-1 flex flex-col overflow-hidden">
         <div className="px-6 py-4 border-b border-rule bg-cream">
           <h1 className="text-base font-serif font-semibold text-ink">Tag management</h1>
