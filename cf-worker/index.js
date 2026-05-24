@@ -38,13 +38,13 @@ export default {
     let forwardTo = null;
     if (env.FORWARD_MAP) {
       try {
-        const map = JSON.parse(env.FORWARD_MAP);
-        for (const k of Object.keys(map)) {
-          if (k.toLowerCase() === recipient) {
-            forwardTo = map[k];
-            break;
-          }
+        const raw = JSON.parse(env.FORWARD_MAP);
+        // Normalize keys once so the lookup is O(1) and case-insensitive.
+        const map = {};
+        for (const [k, v] of Object.entries(raw)) {
+          map[k.toLowerCase()] = v;
         }
+        if (map[recipient]) forwardTo = map[recipient];
       } catch (err) {
         console.log(`FORWARD_MAP parse failed: ${err && err.message}`);
       }
