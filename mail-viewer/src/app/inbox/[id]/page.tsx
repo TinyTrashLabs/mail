@@ -9,6 +9,7 @@ import { AISummary } from '@/components/AISummary';
 import { MessageActions } from '@/components/MessageActions';
 import { MessageTagBar } from '@/components/MessageTagBar';
 import { stripHtml } from '@/lib/ai-utils';
+import { formatFromAddr, formatDisplayName } from '@/lib/display-name';
 import {
   ArrowLeft,
   Reply,
@@ -145,17 +146,25 @@ export default async function MessagePage({
             <div className="bg-[#f0ede4] rounded-card p-4 mb-6">
               <dl className="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1.5 text-sm font-sans">
                 <dt className="font-medium text-ink-soft">From</dt>
-                <dd className="text-ink break-all">{msg.from_addr}</dd>
+                <dd className="text-ink break-all">{formatFromAddr(msg.from_addr)}
+                  <span className="ml-1 text-ink-soft text-xs">&lt;{msg.from_addr.match(/<([^>]+)>/)?.[1] ?? msg.from_addr}&gt;</span>
+                </dd>
                 <dt className="font-medium text-ink-soft">To</dt>
-                <dd className="text-ink break-all">{msg.to_addrs.map((a) => a.address).join(', ')}</dd>
+                <dd className="text-ink break-all">{msg.to_addrs.map((a) => formatDisplayName(a)).join(', ')}</dd>
                 {msg.cc_addrs.length > 0 && (
                   <>
                     <dt className="font-medium text-ink-soft">CC</dt>
-                    <dd className="text-ink break-all">{msg.cc_addrs.map((a) => a.address).join(', ')}</dd>
+                    <dd className="text-ink break-all">{msg.cc_addrs.map((a) => formatDisplayName(a)).join(', ')}</dd>
                   </>
                 )}
                 <dt className="font-medium text-ink-soft">Date</dt>
                 <dd className="text-ink" suppressHydrationWarning>{new Date(msg.received_at).toLocaleString()}</dd>
+                {msg.message_id && (
+                  <>
+                    <dt className="font-medium text-ink-soft">Message-ID</dt>
+                    <dd className="text-ink-soft break-all font-mono text-xs">{msg.message_id}</dd>
+                  </>
+                )}
               </dl>
             </div>
 

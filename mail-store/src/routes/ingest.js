@@ -2,8 +2,74 @@ import { Router } from 'express';
 import { simpleParser } from 'mailparser';
 import { pool } from '../db.js';
 import { extractFields } from '../ingest-fields.js';
+import { PERSONAL } from '../mailbox.js';
 
 const router = Router();
+
+/**
+ * Fire-and-forget: post a new-mail notification to the mailbox owner's
+ * Mattermost DM channel via the MM REST API.
+ *
+ * Required env vars (all optional — if absent, skipped silently):
+ *   MM_BASE_URL        e.g. https://mm.tinytrashlabs.com
+ *   MM_BOT_TOKEN       PAT for the @patch bot
+ *   MAIL_VIEWER_URL    e.g. https://mail.tinytrashlabs.com  (for inbox link)
+ */
+async function notifyNewMail({ mailbox, subject, fromAddr, messageId }) {
+  const base = process.env.MM_BASE_URL;
+  const token = process.env.MM_BOT_TOKEN;
+  if (!base || !token) return;
+
+  // Only notify for personal mailboxes — shared is noisy
+  if (!PERSONAL.has(mailbox)) return;
+
+  try {
+    // Resolve MM user by username
+    const userRes = await fetch(`${base}/api/v4/users/username/${encodeURIComponent(mailbox)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!userRes.ok) {
+      console.warn(`[mail-notify] MM user not found for mailbox ${mailbox}: ${userRes.status}`);
+      return;
+    }
+    const user = await userRes.json();
+
+    // Get bot identity
+    const botRes = await fetch(`${base}/api/v4/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!botRes.ok) return;
+    const bot = await botRes.json();
+
+    // Open / resolve DM channel
+    const dmRes = await fetch(`${base}/api/v4/channels/direct`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([bot.id, user.id]),
+    });
+    if (!dmRes.ok) {
+      console.warn(`[mail-notify] DM channel open failed for ${mailbox}: ${dmRes.status}`);
+      return;
+    }
+    const dm = await dmRes.json();
+
+    // Build notification message
+    const viewerBase = process.env.MAIL_VIEWER_URL || 'https://mail.tinytrashlabs.com';
+    const from = fromAddr || '(unknown)';
+    const subj = subject || '(no subject)';
+    const msgId = messageId ? `?mailbox=${encodeURIComponent(mailbox)}&msg=${messageId}` : `?mailbox=${encodeURIComponent(mailbox)}`;
+    const inboxUrl = `${viewerBase}/inbox${msgId}`;
+    const message = `📬 New mail in **${mailbox}**\n**From:** ${from}\n**Subject:** ${subj}\n[Open →](${inboxUrl})`;
+
+    await fetch(`${base}/api/v4/posts`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel_id: dm.id, message }),
+    });
+  } catch (err) {
+    console.warn('[mail-notify] notification error:', err.message);
+  }
+}
 
 router.post('/ingest', async (req, res) => {
   const auth = req.headers.authorization || '';
@@ -46,7 +112,6 @@ router.post('/ingest', async (req, res) => {
         f.mailbox,
       ]
     );
-    // Return existing id on duplicate instead of null
     let id = result.rows[0]?.id ?? null;
     const duplicate = result.rows.length === 0;
     if (id === null && f.messageId) {
@@ -56,6 +121,12 @@ router.post('/ingest', async (req, res) => {
       );
       id = existing.rows[0]?.id ?? null;
     }
+
+    // Notify mailbox owner — fire-and-forget, never blocks response
+    if (!duplicate) {
+      notifyNewMail({ mailbox: f.mailbox, subject: f.subject, fromAddr: f.fromAddr, messageId: id });
+    }
+
     res.json({ id, mailbox: f.mailbox, duplicate });
   } catch (err) {
     console.error('DB insert error:', err);

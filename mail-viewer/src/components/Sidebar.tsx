@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Inbox, PenSquare, Users, Tag, LogOut, Trash2, Send } from 'lucide-react';
 import { sentMailboxFor, isOwnSentMailbox } from '@/lib/mailbox';
+import { UserAvatar } from '@/components/UserAvatar';
 
 interface SidebarProps {
   username: string;
@@ -53,16 +54,25 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView
 
   return (
     <aside className="hidden sm:flex w-52 bg-[#f0ede4] border-r border-rule flex-col h-full flex-shrink-0">
-      {/* Logo + display name */}
+      {/* Logo + user avatar + display name */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-rule">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/ttl-mascot-logo.png" alt="TTL" width={28} height={28} className="rounded-sm flex-shrink-0" />
-        <div className="flex flex-col min-w-0 leading-tight">
+        <img src="/ttl-mascot-logo.png" alt="TTL" width={24} height={24} className="rounded-sm flex-shrink-0" />
+        <div className="flex flex-col min-w-0 leading-tight flex-1">
           <span className="text-sm font-serif font-semibold text-ink truncate">TTL Mail</span>
           <span className="text-[10px] font-sans text-ink-soft truncate" title={username ? `${username}@` : ''}>
             {displayName || 'signed out'}
           </span>
         </div>
+        {username && (
+          <UserAvatar
+            username={username}
+            displayName={displayName}
+            size={30}
+            editable
+            className="flex-shrink-0"
+          />
+        )}
       </div>
 
       {/* Compose */}
