@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X, ZoomIn, ZoomOut, Check, Loader2 } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Check, Loader2, AlertCircle } from 'lucide-react';
 
 interface Props {
   file: File;
@@ -18,7 +18,7 @@ interface Props {
   onSaved: () => void;
 }
 
-const SIZE = 256; // output square in px
+const SIZE = 256;    // output square px
 const PREVIEW = 240; // canvas px shown in modal
 
 export function AvatarCropModal({ file, onClose, onSaved }: Props) {
@@ -33,14 +33,14 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
 
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
-  // Load image from File
+  // Load image from File — set initial zoom to cover the canvas
   useEffect(() => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
-      // Fit image to canvas initially (cover)
       const scale = Math.max(PREVIEW / img.naturalWidth, PREVIEW / img.naturalHeight);
       setZoom(scale);
       setOffset({ x: 0, y: 0 });
@@ -51,7 +51,8 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  // Draw onto canvas
+  // Draw onto canvas whenever zoom or offset changes (also fires after img loads
+  // because the img.onload sets zoom/offset which triggers this effect).
   useEffect(() => {
     const canvas = canvasRef.current;
     const img = imgRef.current;
@@ -81,14 +82,7 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
     ctx.stroke();
   }, [zoom, offset]);
 
-  // Re-draw when image loads
-  useEffect(() => {
-    if (imgRef.current) {
-      setOffset(o => ({ ...o })); // nudge to trigger redraw
-    }
-  }, [zoom]);
-
-  // Drag handlers
+  // Mouse drag handlers
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     setDragging(true);
     dragStart.current = { mx: e.clientX, my: e.clientY, ox: offset.x, oy: offset.y };
@@ -96,9 +90,10 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging || !dragStart.current) return;
-    const dx = e.clientX - dragStart.current.mx;
-    const dy = e.clientY - dragStart.current.my;
-    setOffset({ x: dragStart.current.ox + dx, y: dragStart.current.oy + dy });
+    setOffset({
+      x: dragStart.current.ox + (e.clientX - dragStart.current.mx),
+      y: dragStart.current.oy + (e.clientY - dragStart.current.my),
+    });
   }, [dragging]);
 
   const onMouseUp = useCallback(() => {
@@ -106,7 +101,7 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
     dragStart.current = null;
   }, []);
 
-  // Touch drag
+  // Touch drag — touchAction: 'none' on the canvas prevents scroll interference
   const touchStart = useRef<{ tx: number; ty: number; ox: number; oy: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
@@ -122,9 +117,9 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
   };
 
   async function save() {
-    const canvas = canvasRef.current;
     const img = imgRef.current;
-    if (!canvas || !img) return;
+    if (!img) return;
+    setSaveError('');
 
     // Render at full SIZE × SIZE for upload
     const out = document.createElement('canvas');
@@ -139,7 +134,6 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
     const x = (SIZE - w) / 2 + offset.x * scale;
     const y = (SIZE - h) / 2 + offset.y * scale;
 
-    // Clip to circle then draw
     ctx.beginPath();
     ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
     ctx.clip();
@@ -158,8 +152,10 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
         onClose();
       } else {
         const d = await resp.json().catch(() => ({}));
-        alert(d.error || 'Upload failed');
+        setSaveError(d.error || 'Upload failed — please try again.');
       }
+    } catch {
+      setSaveError('Network error — please try again.');
     } finally {
       setSaving(false);
     }
@@ -216,6 +212,14 @@ export function AvatarCropModal({ file, onClose, onSaved }: Props) {
             </div>
 
             <p className="text-[11px] text-ink-soft text-center">Drag to reposition · zoom to fit</p>
+
+            {/* Inline save error */}
+            {saveError && (
+              <div className="flex items-center gap-2 w-full px-3 py-2 bg-warn/10 rounded-card border border-warn/30">
+                <AlertCircle size={13} strokeWidth={2} className="text-warn flex-shrink-0" />
+                <p className="text-xs font-sans text-warn">{saveError}</p>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex gap-3 w-full">
