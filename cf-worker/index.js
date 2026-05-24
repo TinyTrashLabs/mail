@@ -29,14 +29,36 @@ export default {
   async email(message, env) {
     // 1) Forward FIRST so gmail backup never depends on mail-store being up.
     //    Email Routing requires the destination to be verified at the account
-    //    level; if FORWARD_TO is unset we silently skip and rely on storage.
-    if (env.FORWARD_TO) {
+    //    level. Two forms supported:
+    //      - FORWARD_TO = "user@example.com"            — forward EVERY message
+    //      - FORWARD_MAP = '{"david@x":"foo@gmail",...}' — per-recipient routing
+    //    FORWARD_MAP wins when both are set, and only forwards if message.to
+    //    matches a key (case-insensitive).
+    const recipient = (message.to || '').toLowerCase();
+    let forwardTo = null;
+    if (env.FORWARD_MAP) {
       try {
-        await message.forward(env.FORWARD_TO);
+        const raw = JSON.parse(env.FORWARD_MAP);
+        // Normalize keys once so the lookup is O(1) and case-insensitive.
+        const map = {};
+        for (const [k, v] of Object.entries(raw)) {
+          map[k.toLowerCase()] = v;
+        }
+        if (map[recipient]) forwardTo = map[recipient];
+      } catch (err) {
+        console.log(`FORWARD_MAP parse failed: ${err && err.message}`);
+      }
+    }
+    if (!forwardTo && env.FORWARD_TO) {
+      forwardTo = env.FORWARD_TO;
+    }
+    if (forwardTo) {
+      try {
+        await message.forward(forwardTo);
       } catch (err) {
         // A forward failure (e.g. destination not yet verified for this
         // address) should NOT swallow ingest — log and continue.
-        console.log(`forward to ${env.FORWARD_TO} failed: ${err && err.message}`);
+        console.log(`forward to ${forwardTo} failed: ${err && err.message}`);
       }
     }
 
