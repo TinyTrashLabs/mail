@@ -12,6 +12,7 @@ describe('resolveMailbox', () => {
     expect(resolveMailbox('shane@tinytrashlabs.com')).toBe('shane');
     expect(resolveMailbox('derek@tinytrashlabs.com')).toBe('derek');
     expect(resolveMailbox('ryan@tinytrashlabs.com')).toBe('ryan');
+    expect(resolveMailbox('patch@tinytrashlabs.com')).toBe('patch');
     expect(resolveMailbox('patchtest@tinytrashlabs.com')).toBe('patchtest');
   });
 
@@ -27,7 +28,7 @@ describe('resolveMailbox', () => {
     expect(resolveMailbox('SHANE@tinytrashlabs.com')).toBe('shane');
   });
 
-  test('PERSONAL set has exactly the five team members', () => {
-    expect([...PERSONAL].sort()).toEqual(['david', 'derek', 'patchtest', 'ryan', 'shane']);
+  test('PERSONAL set has exactly the six team members', () => {
+    expect([...PERSONAL].sort()).toEqual(['david', 'derek', 'patch', 'patchtest', 'ryan', 'shane']);
   });
 });
