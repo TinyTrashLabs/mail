@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   X, Minus, ExternalLink, Send, Paperclip, Bold, Italic,
-  Link2, List, ChevronDown, Save,
+  Link2, List, Save,
 } from 'lucide-react';
 import { AIDraftAssist } from '@/components/AIDraftAssist';
 import { RecipientChips } from '@/components/RecipientChips';
@@ -156,7 +156,15 @@ export function ComposeDrawer() {
 
   function handleDraft(draft: string) {
     if (editorMode === 'rich' && editorRef.current) {
-      editorRef.current.innerHTML = draft.replace(/\n/g, '<br>');
+      // Treat AI output as plain text — escape before inserting to avoid XSS.
+      // We render it as text nodes so no HTML from the model ever executes.
+      const div = document.createElement('div');
+      draft.split('\n').forEach((line, i, arr) => {
+        div.appendChild(document.createTextNode(line));
+        if (i < arr.length - 1) div.appendChild(document.createElement('br'));
+      });
+      editorRef.current.innerHTML = '';
+      editorRef.current.appendChild(div);
       setRichBodyText(editorRef.current.innerText || draft);
     } else {
       setBody(draft);
@@ -181,28 +189,33 @@ export function ComposeDrawer() {
       const bccList = bcc.split(',').map(s => s.trim()).filter(Boolean);
 
       let resp: Response;
-      if (attachments.length > 0) {
-        const form = new FormData();
-        form.append('to', to);
-        form.append('subject', subject);
-        form.append('body', text);
-        if (html) form.append('html', html);
-        if (inReplyTo) form.append('inReplyTo', inReplyTo);
-        ccList.forEach(a => form.append('cc', a));
-        bccList.forEach(a => form.append('bcc', a));
-        attachments.forEach(f => form.append('attachments', f));
-        resp = await fetch('/api/send', { method: 'POST', body: form });
-      } else {
-        resp = await fetch('/api/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to, subject, body: text, html: html || undefined,
-            cc: ccList.length ? ccList : undefined,
-            bcc: bccList.length ? bccList : undefined,
-            inReplyTo: inReplyTo || undefined,
-          }),
-        });
+      try {
+        if (attachments.length > 0) {
+          const form = new FormData();
+          form.append('to', to);
+          form.append('subject', subject);
+          form.append('body', text);
+          if (html) form.append('html', html);
+          if (inReplyTo) form.append('inReplyTo', inReplyTo);
+          ccList.forEach(a => form.append('cc', a));
+          bccList.forEach(a => form.append('bcc', a));
+          attachments.forEach(f => form.append('attachments', f));
+          resp = await fetch('/api/send', { method: 'POST', body: form });
+        } else {
+          resp = await fetch('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to, subject, body: text, html: html || undefined,
+              cc: ccList.length ? ccList : undefined,
+              bcc: bccList.length ? bccList : undefined,
+              inReplyTo: inReplyTo || undefined,
+            }),
+          });
+        }
+      } catch {
+        setError('Network error — check your connection and try again.');
+        return;
       }
 
       if (!resp.ok) {
@@ -225,35 +238,32 @@ export function ComposeDrawer() {
   // ── Minimized tray bar ────────────────────────────────────────────────────
   if (drawerState === 'minimized') {
     return (
-      <div className="fixed bottom-0 right-6 z-50 flex items-center">
+      <div className="fixed bottom-0 right-6 z-50 flex items-stretch rounded-t-card shadow-xl overflow-hidden min-w-[200px]">
+        {/* Expand area — click to expand */}
         <button
           onClick={expand}
-          className="flex items-center gap-3 px-4 py-2.5 bg-ink text-cream rounded-t-card shadow-xl text-sm font-sans font-medium hover:bg-ink/90 transition-colors min-w-[200px]"
+          className="flex items-center gap-2 pl-4 pr-2 py-2.5 bg-ink text-cream text-sm font-sans font-medium hover:bg-ink/90 transition-colors flex-1"
         >
           <Send size={13} strokeWidth={1.75} className="text-teal flex-shrink-0" />
           <span className="truncate flex-1 text-left">{subject || 'New message'}</span>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <span
-              role="button"
-              tabIndex={0}
-              title="Pop out"
-              onMouseDown={popout}
-              onKeyDown={e => { if (e.key === 'Enter') popout(e as unknown as React.MouseEvent); }}
-              className="p-1 rounded hover:bg-white/10 text-cream/60 hover:text-cream transition-colors"
-            >
-              <ExternalLink size={12} strokeWidth={1.75} />
-            </span>
-            <span
-              role="button"
-              tabIndex={0}
-              title="Close"
-              onMouseDown={close}
-              onKeyDown={e => { if (e.key === 'Enter') close(); }}
-              className="p-1 rounded hover:bg-white/10 text-cream/60 hover:text-cream transition-colors"
-            >
-              <X size={12} strokeWidth={2} />
-            </span>
-          </div>
+        </button>
+        {/* Popout */}
+        <button
+          type="button"
+          title="Pop out"
+          onClick={popout}
+          className="flex items-center px-2 py-2.5 bg-ink hover:bg-ink/90 text-cream/60 hover:text-cream transition-colors"
+        >
+          <ExternalLink size={12} strokeWidth={1.75} />
+        </button>
+        {/* Close */}
+        <button
+          type="button"
+          title="Close"
+          onClick={close}
+          className="flex items-center px-2 py-2.5 bg-ink hover:bg-ink/90 text-cream/60 hover:text-cream transition-colors"
+        >
+          <X size={12} strokeWidth={2} />
         </button>
       </div>
     );
