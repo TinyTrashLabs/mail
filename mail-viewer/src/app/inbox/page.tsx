@@ -19,6 +19,7 @@ export default async function InboxPage({
 
   const username = (session as { username?: string }).username ?? '';
   const fullName = (session as { fullName?: string }).fullName;
+  const email = (session as { user?: { email?: string } }).user?.email ?? undefined;
   const mailbox = searchParams.mailbox || username || 'shared';
   const page = parseInt(searchParams.page || '1');
   const tag = searchParams.tag || undefined;
@@ -78,7 +79,7 @@ export default async function InboxPage({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar username={username} fullName={fullName} mailbox={mailbox} tag={tag} trashView={trashOnly} />
+      <Sidebar username={username} fullName={fullName} email={email} mailbox={mailbox} tag={tag} trashView={trashOnly} />
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Mobile top bar — hidden on sm+ screens where the sidebar is visible */}
