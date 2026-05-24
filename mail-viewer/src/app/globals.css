@@ -19,11 +19,26 @@
    * computed font-size is < 16px. Enforce a 16px floor on every editable
    * surface so focus never triggers the zoom. Tailwind utility classes that
    * use text-sm (14px) on inputs are overridden here intentionally.
+   *
+   * Note: contentEditable divs are NOT covered by input/textarea/select,
+   * so we also pin [contenteditable="true"] below. The mobile media query
+   * uses !important to defeat Tailwind text-xs/text-sm utility specificity
+   * on inputs that opt into smaller text on desktop.
    */
   input,
   textarea,
-  select {
+  select,
+  [contenteditable="true"] {
     font-size: 16px;
+  }
+
+  @media (max-width: 767px) {
+    input,
+    textarea,
+    select,
+    [contenteditable="true"] {
+      font-size: 16px !important;
+    }
   }
 
   /* Prose overrides for email body rendering on light bg */
