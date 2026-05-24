@@ -1,96 +1,54 @@
 'use client';
 
 /**
- * MessageActions — client component mounted on the message detail page.
+ * MessageActions — client component mounted in the reading pane toolbar.
+ *
  * Responsibilities:
- *  - Auto-marks message as read on mount (fire-and-forget) when entering for
- *    the first time. Suppressed when user explicitly marked unread (we don't
- *    want the auto-read to immediately undo their action).
- *  - Star toggle, mark-unread, and trash buttons.
- *  - Keyboard shortcuts: 'r' reply, 's' star, 'u' back, '#' / Delete trash,
- *    'U' (shift+u) mark unread.
+ *  - Render star / mark-unread / trash buttons.
+ *  - Wire keyboard shortcuts for the reading-pane context: 'r' reply, 's' star,
+ *    'u' back to list, '#' / Delete trash, shift+U mark unread.
+ *
+ * State ownership: this component is intentionally STATELESS w.r.t. the
+ * message's read/starred/trashed flags. The parent (InboxClient) owns the
+ * authoritative state map for every visible row and passes the current
+ * snapshot in via props. Actions call back to the parent which does the
+ * optimistic update + PATCH. That way the row in the left pane re-renders
+ * the moment the user clicks something here — no router refresh required.
+ *
+ * Auto-mark-read on dwell is handled by the parent (InboxClient) too, not
+ * here — it has the timer so it can cancel when the user clicks away.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Star, Trash2, MailOpen, RotateCcw } from 'lucide-react';
 
 interface MessageActionsProps {
   messageId: number;
-  initialStarred: boolean;
-  initialRead: boolean;
-  initialTrashed: boolean;
+  starred: boolean;
+  trashed: boolean;
   replyHref: string;
   backHref: string;
-}
-
-async function patchState(
-  messageId: number,
-  patch: Record<string, boolean>
-): Promise<boolean> {
-  try {
-    const resp = await fetch(`/api/message-states/${messageId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-    return resp.ok;
-  } catch {
-    return false;
-  }
+  onToggleStar: (id: number) => void;
+  onMarkUnread: (id: number) => void;
+  onToggleTrash: (id: number) => void;
 }
 
 export function MessageActions({
   messageId,
-  initialStarred,
-  initialRead,
-  initialTrashed,
+  starred,
+  trashed,
   replyHref,
   backHref,
+  onToggleStar,
+  onMarkUnread,
+  onToggleTrash,
 }: MessageActionsProps) {
   const router = useRouter();
-  const [starred, setStarred] = useState(initialStarred);
-  const [trashed, setTrashed] = useState(initialTrashed);
-  const userMarkedUnread = useRef(false);
 
-  // Auto-mark read on mount — skip if already read OR if the user has clicked
-  // mark-unread during this view (otherwise we'd race the user's action).
-  useEffect(() => {
-    if (initialRead) return;
-    if (userMarkedUnread.current) return;
-    patchState(messageId, { is_read: true });
-  }, [messageId, initialRead]);
-
-  const toggleStar = useCallback(async () => {
-    const next = !starred;
-    setStarred(next);
-    const ok = await patchState(messageId, { is_starred: next });
-    if (!ok) setStarred(!next);
-  }, [messageId, starred]);
-
-  const markUnread = useCallback(async () => {
-    userMarkedUnread.current = true;
-    const ok = await patchState(messageId, { is_read: false });
-    if (ok) {
-      // Navigate back to the list — the user marked it unread because they
-      // want to come back to it later, so getting out of the detail view is
-      // the right next move.
-      router.push(backHref);
-    }
-  }, [messageId, router, backHref]);
-
-  const toggleTrash = useCallback(async () => {
-    const next = !trashed;
-    setTrashed(next);
-    const ok = await patchState(messageId, { is_trashed: next });
-    if (!ok) {
-      setTrashed(!next);
-      return;
-    }
-    // On trash, bounce back to inbox — message is gone from the current
-    // view. On untrash (restoring from trash), stay put.
-    if (next) router.push(backHref);
-  }, [messageId, trashed, router, backHref]);
+  const toggleStar = useCallback(() => onToggleStar(messageId), [messageId, onToggleStar]);
+  const markUnread = useCallback(() => onMarkUnread(messageId), [messageId, onMarkUnread]);
+  const toggleTrash = useCallback(() => onToggleTrash(messageId), [messageId, onToggleTrash]);
 
   // Keyboard shortcuts on detail page
   useEffect(() => {
