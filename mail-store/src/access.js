@@ -1,4 +1,4 @@
-import { PERSONAL } from './mailbox.js';
+import { PERSONAL, isOwnSentMailbox } from './mailbox.js';
 
 /**
  * Pure access-control predicates. Exported so route handlers AND tests
@@ -8,14 +8,16 @@ import { PERSONAL } from './mailbox.js';
 export function canAccessMailbox(requestedMailbox, viewerUser) {
   return (
     requestedMailbox === 'shared' ||
-    (PERSONAL.has(requestedMailbox) && requestedMailbox === viewerUser)
+    (PERSONAL.has(requestedMailbox) && requestedMailbox === viewerUser) ||
+    isOwnSentMailbox(requestedMailbox, viewerUser)
   );
 }
 
 export function canReadMessage(msgMailbox, viewerUser) {
   return (
     msgMailbox === 'shared' ||
-    (PERSONAL.has(msgMailbox) && msgMailbox === viewerUser)
+    (PERSONAL.has(msgMailbox) && msgMailbox === viewerUser) ||
+    isOwnSentMailbox(msgMailbox, viewerUser)
   );
 }
 
@@ -43,7 +45,11 @@ export function parseMessageId(raw) {
  */
 export function canWriteToMailbox(mailbox, viewerUser) {
   if (!viewerUser || !PERSONAL.has(viewerUser)) return false;
-  return mailbox === 'shared' || mailbox === viewerUser;
+  return (
+    mailbox === 'shared' ||
+    mailbox === viewerUser ||
+    isOwnSentMailbox(mailbox, viewerUser)
+  );
 }
 
 /**

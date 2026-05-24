@@ -47,3 +47,27 @@ describe("canWriteToMailbox / canWriteMessage (write side)", () => {
     expect(canWriteMessage("hr", "david")).toBe(false);
   });
 });
+
+describe("per-user sent mailbox", () => {
+  test("owner can read own <user>-sent", () => {
+    expect(canAccessMailbox("david-sent", "david")).toBe(true);
+    expect(canReadMessage("david-sent", "david")).toBe(true);
+  });
+  test("non-owner cannot read someone else's <user>-sent", () => {
+    expect(canAccessMailbox("david-sent", "shane")).toBe(false);
+    expect(canReadMessage("david-sent", "shane")).toBe(false);
+    expect(canAccessMailbox("david-sent", "")).toBe(false);
+  });
+  test("owner can write own <user>-sent", () => {
+    expect(canWriteToMailbox("david-sent", "david")).toBe(true);
+    expect(canWriteMessage("david-sent", "david")).toBe(true);
+  });
+  test("non-owner cannot write someone else's <user>-sent", () => {
+    expect(canWriteToMailbox("david-sent", "shane")).toBe(false);
+    expect(canWriteMessage("david-sent", "shane")).toBe(false);
+  });
+  test("non-PERSONAL user has no sent mailbox at all", () => {
+    expect(canAccessMailbox("intruder-sent", "intruder")).toBe(false);
+    expect(canWriteToMailbox("intruder-sent", "intruder")).toBe(false);
+  });
+});

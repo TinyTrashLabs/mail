@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { Send, X, Paperclip, Bold, Italic, Link2, List, ChevronDown, Save } from 'lucide-react';
 import { AIDraftAssist } from '@/components/AIDraftAssist';
+import { RecipientChips } from '@/components/RecipientChips';
 
 interface ComposeFormProps {
   defaultTo?: string;
@@ -179,12 +180,16 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
           {/* Compose card */}
           <div className="border border-rule rounded-card overflow-hidden">
             {/* To */}
-            <div className="flex items-center border-b border-rule">
+            <div className="flex items-start border-b border-rule">
               <label htmlFor="compose-to" className="px-4 py-3 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">To</label>
-              <input id="compose-to" value={to} onChange={e => setTo(e.target.value)}
-                type="email" multiple
-                className="flex-1 bg-transparent px-3 py-3 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
-                placeholder="recipient@example.com" autoFocus={!to} />
+              <RecipientChips
+                id="compose-to"
+                value={to}
+                onChange={setTo}
+                placeholder="recipient@example.com"
+                ariaLabel="Recipient email addresses"
+                autoFocus={!to}
+              />
               <button onClick={() => setShowCcBcc(v => !v)}
                 aria-label={showCcBcc ? 'Hide CC and BCC fields' : 'Show CC and BCC fields'}
                 aria-expanded={showCcBcc}
@@ -196,19 +201,25 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
             {/* CC / BCC */}
             {showCcBcc && (
               <>
-                <div className="flex items-center border-b border-rule">
+                <div className="flex items-start border-b border-rule">
                   <label htmlFor="compose-cc" className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">CC</label>
-                  <input id="compose-cc" value={cc} onChange={e => setCc(e.target.value)}
-                    type="email" multiple
-                    className="flex-1 bg-transparent px-3 py-2.5 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
-                    placeholder="cc@example.com" />
+                  <RecipientChips
+                    id="compose-cc"
+                    value={cc}
+                    onChange={setCc}
+                    placeholder="cc@example.com"
+                    ariaLabel="CC email addresses"
+                  />
                 </div>
-                <div className="flex items-center border-b border-rule">
+                <div className="flex items-start border-b border-rule">
                   <label htmlFor="compose-bcc" className="px-4 py-2.5 text-xs font-sans font-medium text-ink-soft w-14 flex-shrink-0">BCC</label>
-                  <input id="compose-bcc" value={bcc} onChange={e => setBcc(e.target.value)}
-                    type="email" multiple
-                    className="flex-1 bg-transparent px-3 py-2.5 text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/50"
-                    placeholder="bcc@example.com" />
+                  <RecipientChips
+                    id="compose-bcc"
+                    value={bcc}
+                    onChange={setBcc}
+                    placeholder="bcc@example.com"
+                    ariaLabel="BCC email addresses"
+                  />
                 </div>
               </>
             )}
