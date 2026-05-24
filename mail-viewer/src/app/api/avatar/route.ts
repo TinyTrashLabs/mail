@@ -28,6 +28,9 @@ function safeAvatarPath(username: string): string | null {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return new NextResponse(null, { status: 401 });
+
   const username = req.nextUrl.searchParams.get('user') ?? '';
   const file = safeAvatarPath(username);
   if (!file) return new NextResponse(null, { status: 404 });
@@ -37,7 +40,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(buf, {
     headers: {
       'Content-Type': 'image/jpeg',
-      'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
+      'Cache-Control': 'private, max-age=300, stale-while-revalidate=60',
     },
   });
 }
@@ -47,8 +50,12 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const username = (session as { username?: string }).username ?? '';
+  // safeAvatarPath enforces SAFE_USERNAME regex — returns null if session username
+  // has an unexpected shape (e.g. OAuth sub instead of plain username).
   const filePath = safeAvatarPath(username);
   if (!filePath) return NextResponse.json({ error: 'invalid username' }, { status: 400 });
+  // Only PERSONAL_MAILBOXES members may upload — prevents arbitrary auth'd users
+  // (e.g. a future shared-mailbox account) from writing to AVATAR_DIR.
   if (!PERSONAL_MAILBOXES.has(username)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
