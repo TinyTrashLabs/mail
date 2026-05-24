@@ -110,7 +110,12 @@ export function MobileHeader({ username, fullName, mailbox, tag, trashView }: Mo
             aria-hidden="true"
           />
           {/* Menu panel */}
-          <div className="absolute left-0 right-0 top-full mt-1 mx-2 bg-cream border border-rule rounded-card shadow-lg z-50 overflow-hidden">
+          <div
+            className="absolute left-0 right-0 top-full mt-1 mx-2 bg-cream border border-rule rounded-card shadow-lg z-50 overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+          >
             {/* Panel header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rule bg-[#f0ede4]">
               <span className="text-xs font-sans font-semibold text-ink-soft uppercase tracking-wide">Navigation</span>
