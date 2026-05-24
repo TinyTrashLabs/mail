@@ -56,6 +56,7 @@ interface InboxClientProps {
   selectedSafeHtml: string | null;
   bodyForAI: string;
   username: string;
+  initialViewMode?: ViewMode;
 }
 
 function formatDate(iso: string) {
@@ -116,6 +117,7 @@ export function InboxClient({
   selectedSafeHtml,
   bodyForAI,
   username,
+  initialViewMode = 'all',
 }: InboxClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -123,7 +125,19 @@ export function InboxClient({
 
   const [states, setStates] = useState<Record<string, MessageState>>(initialStates);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
+
+  const changeViewMode = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    const params = new URLSearchParams(searchParams.toString());
+    if (mode === 'all') {
+      params.delete('view');
+    } else {
+      params.set('view', mode);
+    }
+    startTransition(() => { router.replace(`/inbox?${params.toString()}`, { scroll: false }); });
+  }, [router, searchParams]);
+
   const [showHelp, setShowHelp] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState<number>(-1);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -268,7 +282,7 @@ export function InboxClient({
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               {(['all', 'unread', 'starred'] as ViewMode[]).map(mode => (
-                <button key={mode} onClick={() => setViewMode(mode)}
+                <button key={mode} onClick={() => changeViewMode(mode)}
                   className={`text-xs px-2 py-1 rounded font-sans transition-colors capitalize ${viewMode === mode ? 'bg-teal text-cream font-medium' : 'text-ink-soft hover:text-ink'}`}>
                   {mode}
                 </button>

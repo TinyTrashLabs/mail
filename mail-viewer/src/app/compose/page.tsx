@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
+import { MobileHeader } from '@/components/MobileHeader';
 import { ComposeForm } from '@/components/ComposeForm';
 
 export default async function ComposePage({
@@ -15,8 +16,9 @@ export default async function ComposePage({
   const username = (session as { username?: string }).username ?? '';
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex flex-col sm:flex-row h-screen overflow-hidden">
       <Sidebar username={username} mailbox="" />
+      <MobileHeader username={username} mailbox={username} />
       <ComposeForm
         defaultTo={searchParams.replyTo || ''}
         defaultSubject={searchParams.subject || ''}

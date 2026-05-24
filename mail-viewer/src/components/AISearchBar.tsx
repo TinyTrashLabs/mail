@@ -114,7 +114,7 @@ export function AISearchBar({ mailbox }: AISearchBarProps) {
                 {results!.map((msg) => (
                   <Link
                     key={msg.id}
-                    href={`/inbox/${msg.id}?mailbox=${mailbox}`}
+                    href={`/inbox?mailbox=${mailbox}&msg=${msg.id}`}
                     onClick={clear}
                     className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#f0ede4] transition-colors"
                   >
