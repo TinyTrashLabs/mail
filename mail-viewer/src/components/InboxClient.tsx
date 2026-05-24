@@ -163,6 +163,18 @@ export function InboxClient({
     [states]
   );
 
+  // Ref mirror of `states` so timers/handlers fired from inside setTimeout
+  // closures can read the LATEST snapshot instead of the one captured at
+  // schedule time. Without this, a fast Shift+U between selection and the
+  // 2s timer fire could be clobbered by the timer setting is_read back.
+  const statesRef = useRef(states);
+  useEffect(() => { statesRef.current = states; }, [states]);
+  const getStateLatest = useCallback(
+    (id: number): MessageState =>
+      statesRef.current[String(id)] ?? { is_read: false, is_starred: false, is_trashed: false },
+    []
+  );
+
   const filtered = messages.filter((msg) => {
     if (viewMode === 'unread' && getState(msg.id).is_read) return false;
     if (viewMode === 'starred' && !getState(msg.id).is_starred) return false;
@@ -184,10 +196,19 @@ export function InboxClient({
     return { msg, threadCount: count, isThreadHead: isHead };
   });
 
-  const openMessage = useCallback((id: number) => {
+  const openMessage = useCallback((id: number, opts?: { replace?: boolean }) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('msg', String(id));
-    startTransition(() => { router.push(`/inbox?${params.toString()}`, { scroll: false }); });
+    const url = `/inbox?${params.toString()}`;
+    startTransition(() => {
+      // Use replace for keyboard nav so holding ArrowDown doesn't spam
+      // browser history with one entry per row. Clicks still push.
+      if (opts?.replace) {
+        router.replace(url, { scroll: false });
+      } else {
+        router.push(url, { scroll: false });
+      }
+    });
     // Reset detail/source panels on new message
     setShowDetails(false);
     setShowSource(false);
@@ -227,14 +248,16 @@ export function InboxClient({
 
   // Action handlers wired into MessageActions + RowContextMenu. They take a
   // raw id (not an event) so they're usable both from button clicks and
-  // keyboard shortcuts.
+  // keyboard shortcuts. Use getStateLatest so handlers invoked from stale
+  // closures (e.g. context-menu rendered with snapshot props) still see the
+  // current state.
   const handleToggleStar = useCallback((id: number) => {
-    patchState(id, { is_starred: !getState(id).is_starred });
-  }, [getState, patchState]);
+    patchState(id, { is_starred: !getStateLatest(id).is_starred });
+  }, [getStateLatest, patchState]);
 
   const handleToggleRead = useCallback((id: number) => {
-    patchState(id, { is_read: !getState(id).is_read });
-  }, [getState, patchState]);
+    patchState(id, { is_read: !getStateLatest(id).is_read });
+  }, [getStateLatest, patchState]);
 
   const handleMarkUnread = useCallback((id: number) => {
     patchState(id, { is_read: false });
@@ -249,11 +272,11 @@ export function InboxClient({
   }, [patchState, selectedMsgId, closePane]);
 
   const handleToggleTrash = useCallback((id: number) => {
-    const next = !getState(id).is_trashed;
+    const next = !getStateLatest(id).is_trashed;
     patchState(id, { is_trashed: next });
     // On trash, bounce back to inbox if this row is currently open
     if (next && selectedMsgId === id) closePane();
-  }, [getState, patchState, selectedMsgId, closePane]);
+  }, [getStateLatest, patchState, selectedMsgId, closePane]);
 
   // Auto-mark-read after a dwell on a selected message. Clears if the user
   // moves to another message (or closes the pane) before the timer fires.
@@ -263,10 +286,13 @@ export function InboxClient({
       readTimerRef.current = null;
     }
     if (!selectedMsgId) return;
-    if (getState(selectedMsgId).is_read) return;
+    if (getStateLatest(selectedMsgId).is_read) return;
     readTimerRef.current = setTimeout(() => {
-      // Re-check at fire time — user may have marked unread in the interim
-      if (!getState(selectedMsgId).is_read) {
+      // Re-check at fire time via the ref — user may have marked unread
+      // (or another fast PATCH may have flipped it) since we scheduled.
+      // Reading from statesRef guarantees we see the latest snapshot,
+      // not the one captured at setTimeout-schedule time.
+      if (!getStateLatest(selectedMsgId).is_read) {
         patchState(selectedMsgId, { is_read: true });
       }
       readTimerRef.current = null;
@@ -284,18 +310,19 @@ export function InboxClient({
 
   // Auto-open the most recent message when arriving at the inbox without
   // ?msg= in the URL — desktop only (mobile users see the list first).
+  // Depend on threaded.length so the effect re-runs once data hydrates;
+  // the ref guard ensures it still only fires once per mount.
   const autoOpenedRef = useRef(false);
+  const firstMsgId = threaded[0]?.msg.id;
   useEffect(() => {
     if (autoOpenedRef.current) return;
     if (selectedMsgId) return;
-    if (!threaded.length) return;
+    if (!firstMsgId) return;
     if (typeof window === 'undefined') return;
     if (window.innerWidth < 640) return; // sm breakpoint — mobile shows list
     autoOpenedRef.current = true;
-    openMessage(threaded[0].msg.id);
-    // intentionally only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    openMessage(firstMsgId);
+  }, [firstMsgId, selectedMsgId, openMessage]);
 
   // Row context menu state — used by both `…` overflow button and right-click
   const [ctxMenu, setCtxMenu] = useState<{ id: number; x: number; y: number } | null>(null);
@@ -319,7 +346,8 @@ export function InboxClient({
         e.preventDefault();
         setFocusedIdx(i => {
           const next = Math.min(i + 1, threaded.length - 1);
-          if (next >= 0 && threaded[next]) openMessage(threaded[next].msg.id);
+          // replace:true so holding ArrowDown doesn't spam browser history
+          if (next >= 0 && threaded[next]) openMessage(threaded[next].msg.id, { replace: true });
           return next;
         });
         return;
@@ -328,7 +356,7 @@ export function InboxClient({
         e.preventDefault();
         setFocusedIdx(i => {
           const next = Math.max(i - 1, 0);
-          if (next >= 0 && threaded[next]) openMessage(threaded[next].msg.id);
+          if (next >= 0 && threaded[next]) openMessage(threaded[next].msg.id, { replace: true });
           return next;
         });
         return;

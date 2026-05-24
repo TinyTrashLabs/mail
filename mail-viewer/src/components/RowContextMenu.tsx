@@ -65,9 +65,10 @@ export function RowContextMenu({
   }, [onClose]);
 
   // Clamp menu inside the viewport — for clicks near the right or bottom edge
-  // we shift up/left so the menu doesn't clip off-screen.
+  // we shift up/left so the menu doesn't clip off-screen. Heights are tuned
+  // to the actual rendered content (4 items + divider ≈ 150px).
   const MENU_W = 200;
-  const MENU_H = 200;
+  const MENU_H = 150;
   const left = Math.min(x, (typeof window !== 'undefined' ? window.innerWidth : x + MENU_W) - MENU_W - 8);
   const top = Math.min(y, (typeof window !== 'undefined' ? window.innerHeight : y + MENU_H) - MENU_H - 8);
 
