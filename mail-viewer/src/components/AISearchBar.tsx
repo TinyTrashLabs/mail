@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Sparkles, Search, Loader2, X, AlertCircle } from 'lucide-react';
 
 interface MailMessage {
@@ -21,6 +22,8 @@ export function AISearchBar({ mailbox }: AISearchBarProps) {
   const [explanation, setExplanation] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const searchParams = useSearchParams();
+  const activeMsgId = searchParams.get('msg');
 
   async function search() {
     if (!query.trim()) return;
@@ -42,7 +45,7 @@ export function AISearchBar({ mailbox }: AISearchBarProps) {
       const d = await resp.json();
       setResults(d.results);
       setExplanation(d.explanation);
-    } catch (e) {
+    } catch {
       setError('Network error. Check your connection and try again.');
     } finally {
       setLoading(false);
@@ -68,8 +71,8 @@ export function AISearchBar({ mailbox }: AISearchBarProps) {
           className="flex-1 bg-transparent text-sm font-sans text-ink focus:outline-none placeholder:text-ink-soft/60 min-w-0"
           placeholder="AI search: 'invoices from last week'..."
         />
-        {query && (
-          <button onClick={clear} className="text-ink-soft hover:text-ink transition-colors" title="Clear">
+        {(query || results !== null) && (
+          <button onClick={clear} className="text-ink-soft hover:text-ink transition-colors" title="Clear search">
             <X size={13} strokeWidth={2} />
           </button>
         )}
@@ -87,7 +90,7 @@ export function AISearchBar({ mailbox }: AISearchBarProps) {
         </button>
       </div>
 
-      {/* Results */}
+      {/* Results — persist after clicking; highlight active message */}
       {(results !== null || error) && (
         <div className="mt-2 border border-rule rounded-card overflow-hidden">
           {error ? (
@@ -111,27 +114,31 @@ export function AISearchBar({ mailbox }: AISearchBarProps) {
                 </div>
               )}
               <div className="divide-y divide-rule max-h-64 overflow-y-auto">
-                {results!.map((msg) => (
-                  <Link
-                    key={msg.id}
-                    href={`/inbox?mailbox=${mailbox}&msg=${msg.id}`}
-                    onClick={clear}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#f0ede4] transition-colors"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-teal-strong flex items-center justify-center text-xs font-bold text-cream flex-shrink-0">
-                      {(msg.from_addr[0] || '?').toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-xs font-medium text-ink truncate">{msg.from_addr.split('@')[0]}</span>
-                        <span className="text-xs text-ink-soft flex-shrink-0" suppressHydrationWarning>
-                          {new Date(msg.received_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
+                {results!.map((msg) => {
+                  const isActive = activeMsgId === String(msg.id);
+                  return (
+                    <Link
+                      key={msg.id}
+                      href={`/inbox?mailbox=${mailbox}&msg=${msg.id}`}
+                      className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
+                        isActive ? 'bg-teal/10 border-l-2 border-teal' : 'hover:bg-[#f0ede4]'
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-cream flex-shrink-0 ${isActive ? 'bg-teal' : 'bg-teal-strong'}`}>
+                        {(msg.from_addr[0] || '?').toUpperCase()}
                       </div>
-                      <div className="text-xs text-ink-soft truncate">{msg.subject}</div>
-                    </div>
-                  </Link>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className={`text-xs font-medium truncate ${isActive ? 'text-teal-strong' : 'text-ink'}`}>{msg.from_addr.split('@')[0]}</span>
+                          <span className="text-xs text-ink-soft flex-shrink-0" suppressHydrationWarning>
+                            {new Date(msg.received_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                        <div className="text-xs text-ink-soft truncate">{msg.subject}</div>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             </>
           )}
