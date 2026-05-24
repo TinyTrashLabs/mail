@@ -53,6 +53,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
+  // Reject before buffering when Content-Length header signals oversize body.
+  const contentLength = parseInt(req.headers.get('content-length') ?? '0', 10);
+  if (contentLength > MAX_BYTES) {
+    return NextResponse.json({ error: 'file too large (max 4 MB)' }, { status: 413 });
+  }
+
   const contentType = req.headers.get('content-type') ?? '';
   if (!contentType.includes('multipart/form-data')) {
     return NextResponse.json({ error: 'expected multipart/form-data' }, { status: 400 });
@@ -64,6 +70,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'missing avatar field' }, { status: 400 });
   }
 
+  // Re-check after buffering (Content-Length can be absent or spoofed).
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: 'file too large (max 4 MB)' }, { status: 413 });
   }

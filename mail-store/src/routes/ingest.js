@@ -58,8 +58,10 @@ async function notifyNewMail({ mailbox, subject, fromAddr, messageId }) {
 
     // Build notification message
     const viewerBase = process.env.MAIL_VIEWER_URL || 'https://mail.tinytrashlabs.com';
-    const from = fromAddr || '(unknown)';
-    const subj = subject || '(no subject)';
+    // Neutralize Markdown special chars in untrusted fields to prevent link injection.
+    const escapeMd = (s) => s.replace(/[[\]`\\]/g, '\\$&').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+    const from = escapeMd(fromAddr || '(unknown)');
+    const subj = escapeMd(subject || '(no subject)');
     const msgId = messageId ? `?mailbox=${encodeURIComponent(mailbox)}&msg=${messageId}` : `?mailbox=${encodeURIComponent(mailbox)}`;
     const inboxUrl = `${viewerBase}/inbox${msgId}`;
     const message = `📬 New mail in **${mailbox}**\n**From:** ${from}\n**Subject:** ${subj}\n[Open →](${inboxUrl})`;
