@@ -13,13 +13,13 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import sharp from 'sharp';
+import { PERSONAL_MAILBOXES } from '@/lib/mailbox';
 
 const AVATAR_DIR = process.env.AVATAR_DIR ?? path.join(process.cwd(), 'data', 'avatars');
 const MAX_BYTES = 4 * 1024 * 1024; // 4 MB upload limit
 
-// Strict allow-list: only alphanumeric + hyphen + underscore, 1-32 chars.
-// This is deliberately tighter than the mailbox PERSONAL set so there's no
-// collision risk between usernames that differ only in non-alphanum chars.
+// Strict shape check: alphanumeric + hyphen + underscore, 1-32 chars.
+// Applied on both GET (enumeration guard) and POST (write guard).
 const SAFE_USERNAME = /^[a-zA-Z0-9_-]{1,32}$/;
 
 function safeAvatarPath(username: string): string | null {
@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
   const username = (session as { username?: string }).username ?? '';
   const filePath = safeAvatarPath(username);
   if (!filePath) return NextResponse.json({ error: 'invalid username' }, { status: 400 });
+  if (!PERSONAL_MAILBOXES.has(username)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   const contentType = req.headers.get('content-type') ?? '';
   if (!contentType.includes('multipart/form-data')) {
