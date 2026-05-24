@@ -61,3 +61,19 @@ ALTER TABLE messages
 CREATE INDEX IF NOT EXISTS idx_messages_globally_trashed
   ON messages (is_globally_trashed)
   WHERE is_globally_trashed = TRUE;
+
+-- Drafts: per-user saved compose state (server-side, not localStorage)
+CREATE TABLE IF NOT EXISTS drafts (
+  id         BIGSERIAL PRIMARY KEY,
+  username   VARCHAR(64) NOT NULL,
+  to_addrs   TEXT        NOT NULL DEFAULT '',
+  cc_addrs   TEXT        NOT NULL DEFAULT '',
+  bcc_addrs  TEXT        NOT NULL DEFAULT '',
+  subject    TEXT        NOT NULL DEFAULT '',
+  text_body  TEXT        NOT NULL DEFAULT '',
+  html_body  TEXT,
+  in_reply_to TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_drafts_username ON drafts (username, updated_at DESC);

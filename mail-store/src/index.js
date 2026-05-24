@@ -6,6 +6,7 @@ import messagesRouter from './routes/messages.js';
 import sentRouter from './routes/sent.js';
 import stateRouter from './routes/state.js';
 import tagsRouter from './routes/tags.js';
+import draftsRouter from './routes/drafts.js';
 
 const app = express();
 app.use(express.json({ limit: '20mb' }));
@@ -15,6 +16,7 @@ app.use('/', ingestRouter);
 app.use('/', sentRouter);
 app.use('/', stateRouter);
 app.use('/', tagsRouter);
+app.use('/', draftsRouter);
 app.use('/', messagesRouter);
 
 const PORT = process.env.PORT || 3025;

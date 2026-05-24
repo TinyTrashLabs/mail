@@ -136,6 +136,79 @@ export async function persistSent(
   return resp.json();
 }
 
+// ─── Drafts ──────────────────────────────────────────────────────────────────
+
+export interface Draft {
+  id: number;
+  username: string;
+  to_addrs: string;
+  cc_addrs: string;
+  bcc_addrs: string;
+  subject: string;
+  text_body?: string;
+  html_body?: string | null;
+  in_reply_to?: string | null;
+  updated_at: string;
+}
+
+export interface DraftPayload {
+  to?: string;
+  cc?: string;
+  bcc?: string;
+  subject?: string;
+  text?: string;
+  html?: string | null;
+  inReplyTo?: string | null;
+}
+
+export async function listDrafts(viewerUser: string): Promise<{ drafts: Draft[] }> {
+  const resp = await callStoreAs('/drafts', viewerUser);
+  if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchDraft(id: number, viewerUser: string): Promise<Draft> {
+  const resp = await callStoreAs(`/drafts/${id}`, viewerUser);
+  if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
+  return resp.json();
+}
+
+export async function createDraft(payload: DraftPayload, viewerUser: string): Promise<{ id: number; updated_at: string }> {
+  const url = `${STORE_URL}/drafts`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: viewerHeaders(viewerUser, 'application/json'),
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+  if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
+  return resp.json();
+}
+
+export async function updateDraft(id: number, payload: DraftPayload, viewerUser: string): Promise<{ id: number; updated_at: string }> {
+  const url = `${STORE_URL}/drafts/${id}`;
+  const resp = await fetch(url, {
+    method: 'PATCH',
+    headers: viewerHeaders(viewerUser, 'application/json'),
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+  if (!resp.ok) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
+  return resp.json();
+}
+
+export async function deleteDraft(id: number, viewerUser: string): Promise<void> {
+  const url = `${STORE_URL}/drafts/${id}`;
+  const resp = await fetch(url, {
+    method: 'DELETE',
+    headers: viewerHeaders(viewerUser),
+    cache: 'no-store',
+  });
+  if (!resp.ok && resp.status !== 404) throw new MailStoreError(resp.status, `mail-store ${resp.status}`);
+}
+
+// ─── Message state ────────────────────────────────────────────────────────────
+
 export async function patchMessageState(
   id: number,
   patch: Partial<MessageState>,

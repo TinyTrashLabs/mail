@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Inbox, PenSquare, Users, Tag, LogOut, Trash2, Send } from 'lucide-react';
+import { Inbox, PenSquare, Users, Tag, LogOut, Trash2, Send, FileText } from 'lucide-react';
 import { sentMailboxFor, isOwnSentMailbox } from '@/lib/mailbox';
 import { UserAvatar } from '@/components/UserAvatar';
 import { openComposeDrawer } from '@/components/ComposeDrawer';
@@ -12,6 +12,7 @@ interface SidebarProps {
   mailbox: string;
   tag?: string;
   trashView?: boolean;
+  draftsView?: boolean;
 }
 
 interface TagRow { tag: string; count: number | string }
@@ -23,7 +24,7 @@ function tagDot(tag: string) {
   return TAG_DOT_PALETTE[h % TAG_DOT_PALETTE.length];
 }
 
-export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView }: SidebarProps) {
+export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView, draftsView }: SidebarProps) {
   const [tags, setTags] = useState<TagRow[]>([]);
   const displayName = (fullName && fullName !== username) ? fullName : username;
 
@@ -44,13 +45,16 @@ export function Sidebar({ username, fullName, mailbox, tag: activeTag, trashView
   const sentBox = username ? sentMailboxFor(username) : '';
   const navItems = [
     ...(username
-      ? [{ label: `${displayName}'s inbox`, sub: `${username}@`, href: `/inbox?mailbox=${username}`, icon: Inbox, active: mailbox === username && !activeTag && !trashView }]
+      ? [{ label: `${displayName}'s inbox`, sub: `${username}@`, href: `/inbox?mailbox=${username}`, icon: Inbox, active: mailbox === username && !activeTag && !trashView && !draftsView }]
       : []),
-    { label: 'Shared', sub: 'team mail', href: '/inbox?mailbox=shared', icon: Users, active: mailbox === 'shared' && !activeTag && !trashView },
+    { label: 'Shared', sub: 'team mail', href: '/inbox?mailbox=shared', icon: Users, active: mailbox === 'shared' && !activeTag && !trashView && !draftsView },
     ...(sentBox
-      ? [{ label: 'Sent', sub: 'mail you sent', href: `/inbox?mailbox=${encodeURIComponent(sentBox)}`, icon: Send, active: isOwnSentMailbox(mailbox, username) && !activeTag && !trashView }]
+      ? [{ label: 'Sent', sub: 'mail you sent', href: `/inbox?mailbox=${encodeURIComponent(sentBox)}`, icon: Send, active: isOwnSentMailbox(mailbox, username) && !activeTag && !trashView && !draftsView }]
       : []),
-    { label: 'Trash', sub: 'recently deleted', href: `/inbox?mailbox=${encodeURIComponent(mailbox)}&trash=1`, icon: Trash2, active: !!trashView },
+    ...(username
+      ? [{ label: 'Drafts', sub: 'unsent messages', href: `/drafts`, icon: FileText, active: !!draftsView }]
+      : []),
+    { label: 'Trash', sub: 'recently deleted', href: `/inbox?mailbox=${encodeURIComponent(mailbox)}&trash=1`, icon: Trash2, active: !!trashView && !draftsView },
   ];
 
   return (
