@@ -11,9 +11,14 @@
  *   401 → secret rejected → DRIFT DETECTED
  *   other → transient / infra error → skip (log warning, don't alert)
  *
+ * Security note: the Authorization header contains INGEST_SECRET and is
+ * sent on every real ingest request too. Cloudflare Workers do not log
+ * request headers to accessible storage in production; no additional
+ * exposure beyond what every inbound email already creates.
+ *
  * Env vars:
  *   INGEST_SECRET         — current mail-store secret (required)
- *   INGEST_ENDPOINT       — base URL of CF ingest worker, e.g. https://mail-ingest.tinytrashlabs.com (required)
+ *   INGEST_ENDPOINT       — base URL of CF ingest worker (default: https://mail-ingest.tinytrashlabs.com)
  *   MM_BASE_URL           — Mattermost base URL (optional; skip alert if absent)
  *   MM_BOT_TOKEN          — MM bot PAT (optional)
  *   DRIFT_ALERT_CHANNEL   — MM channel name to ping on drift (default: it-help)
@@ -25,18 +30,13 @@ import http from 'node:http';
 import { URL } from 'node:url';
 
 const INGEST_SECRET    = process.env.INGEST_SECRET;
-const INGEST_ENDPOINT  = process.env.INGEST_ENDPOINT;
+const INGEST_ENDPOINT  = process.env.INGEST_ENDPOINT || 'https://mail-ingest.tinytrashlabs.com';
 const MM_BASE_URL      = process.env.MM_BASE_URL;
 const MM_BOT_TOKEN     = process.env.MM_BOT_TOKEN;
 const ALERT_CHANNEL    = process.env.DRIFT_ALERT_CHANNEL || 'it-help';
 const INTERVAL_MS      = parseInt(process.env.CHECK_INTERVAL_MS || '600000', 10);
 
-if (!INGEST_SECRET || !INGEST_ENDPOINT) {
-  console.error('[drift-guard] INGEST_SECRET and INGEST_ENDPOINT are required');
-  process.exit(1);
-}
-
-function request(url, options, body) {
+export function request(url, options, body) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const mod = parsed.protocol === 'https:' ? https : http;
@@ -51,20 +51,20 @@ function request(url, options, body) {
   });
 }
 
-async function mmPost(message) {
-  if (!MM_BASE_URL || !MM_BOT_TOKEN) return;
+export async function mmPost(mmBaseUrl, mmBotToken, alertChannel, message) {
+  if (!mmBaseUrl || !mmBotToken) return;
   try {
     // Resolve channel id by name
     const ch = await request(
-      `${MM_BASE_URL}/api/v4/channels/name/${encodeURIComponent(ALERT_CHANNEL)}?team_name=ttl`,
-      { method: 'GET', headers: { Authorization: `Bearer ${MM_BOT_TOKEN}` } }
+      `${mmBaseUrl}/api/v4/channels/name/${encodeURIComponent(alertChannel)}?team_name=ttl`,
+      { method: 'GET', headers: { Authorization: `Bearer ${mmBotToken}` } }
     );
     if (ch.status !== 200) {
-      // Fallback: try without team
+      // Fallback: search
       const ch2 = await request(
-        `${MM_BASE_URL}/api/v4/channels/search`,
-        { method: 'POST', headers: { Authorization: `Bearer ${MM_BOT_TOKEN}`, 'Content-Type': 'application/json' } },
-        JSON.stringify({ term: ALERT_CHANNEL })
+        `${mmBaseUrl}/api/v4/channels/search`,
+        { method: 'POST', headers: { Authorization: `Bearer ${mmBotToken}`, 'Content-Type': 'application/json' } },
+        JSON.stringify({ term: alertChannel })
       );
       const channels = JSON.parse(ch2.body);
       if (!Array.isArray(channels) || !channels[0]?.id) {
@@ -73,16 +73,16 @@ async function mmPost(message) {
       }
       const channelId = channels[0].id;
       await request(
-        `${MM_BASE_URL}/api/v4/posts`,
-        { method: 'POST', headers: { Authorization: `Bearer ${MM_BOT_TOKEN}`, 'Content-Type': 'application/json' } },
+        `${mmBaseUrl}/api/v4/posts`,
+        { method: 'POST', headers: { Authorization: `Bearer ${mmBotToken}`, 'Content-Type': 'application/json' } },
         JSON.stringify({ channel_id: channelId, message })
       );
       return;
     }
     const channelId = JSON.parse(ch.body).id;
     await request(
-      `${MM_BASE_URL}/api/v4/posts`,
-      { method: 'POST', headers: { Authorization: `Bearer ${MM_BOT_TOKEN}`, 'Content-Type': 'application/json' } },
+      `${mmBaseUrl}/api/v4/posts`,
+      { method: 'POST', headers: { Authorization: `Bearer ${mmBotToken}`, 'Content-Type': 'application/json' } },
       JSON.stringify({ channel_id: channelId, message })
     );
   } catch (err) {
@@ -90,18 +90,40 @@ async function mmPost(message) {
   }
 }
 
-let alertedAt = 0; // epoch ms of last drift alert (debounce — re-alert after 1hr)
-const ALERT_DEBOUNCE_MS = 60 * 60 * 1000;
+export const ALERT_DEBOUNCE_MS = 60 * 60 * 1000;
 
-async function check() {
+/**
+ * Run one probe cycle.
+ *
+ * @param {object} opts
+ * @param {string}   opts.ingestSecret
+ * @param {string}   opts.ingestEndpoint
+ * @param {string}   [opts.mmBaseUrl]
+ * @param {string}   [opts.mmBotToken]
+ * @param {string}   [opts.alertChannel]
+ * @param {Function} opts.requestFn   — injectable for tests (default: module-level `request`)
+ * @param {Function} opts.mmPostFn    — injectable for tests (default: module-level `mmPost`)
+ * @param {{ value: number }} opts.alertedAtRef — mutable ref to debounce state
+ * @returns {Promise<'in-sync'|'drift'|'error'>}
+ */
+export async function runCheck({
+  ingestSecret,
+  ingestEndpoint,
+  mmBaseUrl,
+  mmBotToken,
+  alertChannel = 'it-help',
+  requestFn = request,
+  mmPostFn = mmPost,
+  alertedAtRef,
+}) {
   try {
     const body = JSON.stringify({});
-    const result = await request(
-      `${INGEST_ENDPOINT}/ingest`,
+    const result = await requestFn(
+      `${ingestEndpoint}/ingest`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${INGEST_SECRET}`,
+          Authorization: `Bearer ${ingestSecret}`,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
         },
@@ -110,31 +132,41 @@ async function check() {
     );
 
     if (result.status === 400) {
-      // 400 = secret accepted, body rejected (missing `raw`) → IN SYNC
-      console.log(`[drift-guard] ${new Date().toISOString()} OK — secrets in sync (probe returned 400)`);
-      alertedAt = 0; // reset debounce on recovery
+      console.log(`[drift-guard] ${new Date().toISOString()} OK — secrets in sync`);
+      alertedAtRef.value = 0; // reset debounce on recovery
+      return 'in-sync';
     } else if (result.status === 401) {
-      // DRIFT DETECTED
       const now = Date.now();
-      console.error(`[drift-guard] ${new Date().toISOString()} DRIFT DETECTED — CF worker rejected INGEST_SECRET with 401`);
-      if (now - alertedAt > ALERT_DEBOUNCE_MS) {
-        alertedAt = now;
-        await mmPost(
+      console.error(`[drift-guard] ${new Date().toISOString()} DRIFT DETECTED — 401 from ${ingestEndpoint}`);
+      if (now - alertedAtRef.value > ALERT_DEBOUNCE_MS) {
+        alertedAtRef.value = now;
+        await mmPostFn(
+          mmBaseUrl, mmBotToken, alertChannel,
           `⚠️ **INGEST_SECRET drift detected** — mail-store and CF worker secrets are out of sync.\n` +
-          `CF worker returned 401 on probe to \`${INGEST_ENDPOINT}\`.\n` +
+          `CF worker returned 401 on probe to \`${ingestEndpoint}\`.\n` +
           `Fix: re-sync the secret in Infisical and redeploy both services. ` +
           `Until fixed, incoming mail is being dropped.`
         );
       }
+      return 'drift';
     } else {
-      // Transient / unexpected
-      console.warn(`[drift-guard] ${new Date().toISOString()} unexpected probe status ${result.status} — skipping`);
+      console.warn(`[drift-guard] ${new Date().toISOString()} unexpected status ${result.status} — skipping`);
+      return 'error';
     }
   } catch (err) {
     console.warn(`[drift-guard] ${new Date().toISOString()} probe error: ${err.message}`);
+    return 'error';
   }
 }
 
-console.log(`[drift-guard] starting — probing ${INGEST_ENDPOINT} every ${INTERVAL_MS / 1000}s`);
-check(); // run immediately on boot
-setInterval(check, INTERVAL_MS);
+// Only run the loop when executed directly (not imported in tests).
+if (process.argv[1] && new URL(process.argv[1], 'file:').pathname === new URL(import.meta.url).pathname) {
+  if (!INGEST_SECRET) {
+    console.error('[drift-guard] INGEST_SECRET is required');
+    process.exit(1);
+  }
+  const alertedAtRef = { value: 0 };
+  console.log(`[drift-guard] starting — probing ${INGEST_ENDPOINT} every ${INTERVAL_MS / 1000}s`);
+  runCheck({ ingestSecret: INGEST_SECRET, ingestEndpoint: INGEST_ENDPOINT, mmBaseUrl: MM_BASE_URL, mmBotToken: MM_BOT_TOKEN, alertChannel: ALERT_CHANNEL, alertedAtRef });
+  setInterval(() => runCheck({ ingestSecret: INGEST_SECRET, ingestEndpoint: INGEST_ENDPOINT, mmBaseUrl: MM_BASE_URL, mmBotToken: MM_BOT_TOKEN, alertChannel: ALERT_CHANNEL, alertedAtRef }), INTERVAL_MS);
+}
