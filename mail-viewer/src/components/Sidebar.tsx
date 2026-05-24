@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Inbox, PenSquare, Users, Tag, LogOut, Trash2, Send, FileText } from 'lucide-react';
+import { Inbox, PenSquare, Users, Tag, LogOut, Trash2, Send, FileText, UserCircle } from 'lucide-react';
 import { sentMailboxFor, isOwnSentMailbox } from '@/lib/mailbox';
 import { titleCase } from '@/lib/display-name';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -136,6 +136,11 @@ export function Sidebar({ username, fullName, email, mailbox, tag: activeTag, tr
 
       {/* Footer */}
       <div className="border-t border-rule px-2 py-2 space-y-0.5">
+        <Link href="/profile"
+          className="flex items-center gap-2.5 px-3 py-1.5 rounded-card text-xs font-sans text-ink-soft hover:bg-rule hover:text-ink transition-colors w-full">
+          <UserCircle size={12} strokeWidth={1.75} />
+          Edit profile
+        </Link>
         <Link href="/api/auth/signout"
           className="flex items-center gap-2.5 px-3 py-1.5 rounded-card text-xs font-sans text-ink-soft hover:bg-rule hover:text-ink transition-colors w-full">
           <LogOut size={12} strokeWidth={1.75} />

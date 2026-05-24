@@ -4,13 +4,14 @@
  * UserAvatar — displays a user's avatar image (from /api/avatar?user=<username>)
  * with an initials fallback.
  *
- * When `editable` is true, clicking the avatar opens a file picker and uploads
- * the selected image to POST /api/avatar. Used in the sidebar for the current user.
+ * When `editable` is true, clicking the avatar opens a file picker → crop modal
+ * → uploads the cropped result to POST /api/avatar.
  */
 
 import { useRef, useState } from 'react';
 import Image from 'next/image';
 import { Camera } from 'lucide-react';
+import { AvatarCropModal } from '@/components/AvatarCropModal';
 
 interface UserAvatarProps {
   username: string;
@@ -39,90 +40,80 @@ function initials(name: string): string {
 
 export function UserAvatar({ username, displayName, size = 32, editable = false, className = '' }: UserAvatarProps) {
   const [hasImage, setHasImage] = useState(true);   // optimistic: try img first
-  const [uploading, setUploading] = useState(false);
   const [version, setVersion] = useState(0);         // bump to bust cache after upload
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const label = displayName || username;
   const src = `/api/avatar?user=${encodeURIComponent(username)}&v=${version}`;
 
-  async function handleFile(file: File) {
-    if (!file) return;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('avatar', file);
-      const res = await fetch('/api/avatar', { method: 'POST', body: fd });
-      if (res.ok) {
-        setHasImage(true);
-        setVersion(v => v + 1);
-      }
-    } finally {
-      setUploading(false);
-    }
-  }
-
   const roundedCls = 'rounded-full overflow-hidden flex-shrink-0';
   const bgCls = avatarBg(username);
 
   return (
-    <div
-      className={`relative inline-flex ${roundedCls} ${className}`}
-      style={{ width: size, height: size }}
-    >
-      {hasImage ? (
-        <Image
-          src={src}
-          alt={label}
-          width={size}
-          height={size}
-          className="object-cover rounded-full"
-          onError={() => setHasImage(false)}
-          unoptimized
-        />
-      ) : (
-        <div
-          className={`${bgCls} w-full h-full flex items-center justify-center text-cream font-bold select-none`}
-          style={{ fontSize: Math.round(size * 0.38) }}
-          aria-label={label}
-        >
-          {initials(label)}
-        </div>
-      )}
-
-      {/* Upload overlay — only when editable */}
-      {editable && (
-        <>
-          <button
-            type="button"
-            title="Change avatar"
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-            className="absolute inset-0 rounded-full flex items-center justify-center bg-ink/0 hover:bg-ink/40 transition-colors group"
-            aria-label="Upload avatar"
-          >
-            <Camera
-              size={Math.round(size * 0.38)}
-              strokeWidth={2}
-              className="text-cream opacity-0 group-hover:opacity-100 transition-opacity"
-            />
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            className="sr-only"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+    <>
+      <div
+        className={`relative inline-flex ${roundedCls} ${className}`}
+        style={{ width: size, height: size }}
+      >
+        {hasImage ? (
+          <Image
+            src={src}
+            alt={label}
+            width={size}
+            height={size}
+            className="object-cover rounded-full"
+            onError={() => setHasImage(false)}
+            unoptimized
           />
-        </>
-      )}
+        ) : (
+          <div
+            className={`${bgCls} w-full h-full flex items-center justify-center text-cream font-bold select-none`}
+            style={{ fontSize: Math.round(size * 0.38) }}
+            aria-label={label}
+          >
+            {initials(label)}
+          </div>
+        )}
 
-      {/* Upload spinner */}
-      {uploading && (
-        <div className="absolute inset-0 rounded-full bg-ink/50 flex items-center justify-center">
-          <div className="w-3 h-3 border-2 border-cream border-t-transparent rounded-full animate-spin" />
-        </div>
+        {/* Upload overlay — only when editable; opens file picker → crop modal */}
+        {editable && (
+          <>
+            <button
+              type="button"
+              title="Change avatar"
+              onClick={() => fileRef.current?.click()}
+              className="absolute inset-0 rounded-full flex items-center justify-center bg-ink/0 hover:bg-ink/40 transition-colors group"
+              aria-label="Change avatar"
+            >
+              <Camera
+                size={Math.round(size * 0.38)}
+                strokeWidth={2}
+                className="text-cream opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) { setCropFile(f); e.target.value = ''; }
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Crop modal — mounts outside the avatar element so it can be full-screen */}
+      {cropFile && (
+        <AvatarCropModal
+          file={cropFile}
+          onClose={() => setCropFile(null)}
+          onSaved={() => { setHasImage(true); setVersion(v => v + 1); setCropFile(null); }}
+        />
       )}
-    </div>
+    </>
   );
 }
