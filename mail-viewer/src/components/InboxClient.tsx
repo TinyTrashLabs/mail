@@ -127,7 +127,7 @@ export function InboxClient({
   const [showHelp, setShowHelp] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState<number>(-1);
   const searchRef = useRef<HTMLInputElement>(null);
-  const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const rowRefs = useRef<(HTMLElement | null)[]>([]);
 
   const getState = useCallback(
     (id: number): MessageState =>
@@ -303,10 +303,19 @@ export function InboxClient({
             const isFocused = focusedIdx === idx;
             const isSelected = selectedMsgId === msg.id;
             return (
-              <button key={msg.id}
+              <div key={msg.id}
                 ref={el => { rowRefs.current[idx] = el; }}
+                role="row"
                 onClick={() => openMessage(msg.id)}
-                className={`w-full text-left flex items-start gap-2 px-3 py-2.5 transition-colors group ${isSelected ? 'bg-teal/10 border-l-2 border-teal' : isFocused ? 'bg-[#f0ede4]' : 'hover:bg-[#f0ede4]'}`}>
+                onKeyDown={e => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === 'Enter' || e.key === ' ' || e.key === 'o') {
+                    if (e.key === 'Enter' || e.key === ' ') e.preventDefault();
+                    openMessage(msg.id);
+                  }
+                }}
+                tabIndex={0}
+                className={`flex items-start gap-2 px-3 py-2.5 transition-colors group cursor-pointer ${isSelected ? 'bg-teal/10 border-l-2 border-teal' : isFocused ? 'bg-[#f0ede4]' : 'hover:bg-[#f0ede4]'}`}>
                 {/* Unread dot */}
                 <div className="flex-shrink-0 mt-1.5 w-1.5 h-1.5">
                   {!state.is_read && <div className="w-1.5 h-1.5 rounded-full bg-teal-strong" />}
@@ -338,23 +347,21 @@ export function InboxClient({
                     </div>
                   )}
                 </div>
-                {/* Icons — note: star uses span+role because this is nested inside a <button> row */}
+                {/* Icons — star is a proper <button> sibling (not nested inside another button) */}
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                  <span
-                    role="button"
-                    tabIndex={0}
+                  <button
+                    type="button"
                     aria-label={state.is_starred ? 'Unstar' : 'Star'}
                     onClick={e => toggleStar(e, msg.id)}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleStar(e, msg.id); } }}
                     className="focus:outline-none cursor-pointer"
                   >
                     <Star size={12} strokeWidth={1.5} className={state.is_starred ? 'fill-[#d8a14a] text-[#d8a14a]' : 'text-rule group-hover:text-ink-soft'} />
-                  </span>
+                  </button>
                   {(msg.attachments_meta?.length ?? 0) > 0 && (
                     <Paperclip size={11} className="text-ink-soft" strokeWidth={1.75} />
                   )}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>

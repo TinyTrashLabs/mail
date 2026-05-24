@@ -32,7 +32,7 @@ test.describe('Compose (authenticated)', () => {
     await page.goto('/compose');
     await expect(page.locator('input[placeholder*="recipient"]')).toBeVisible();
     await expect(page.locator('input[placeholder="Subject"]')).toBeVisible();
-    await expect(page.locator('textarea')).toBeVisible();
+    await expect(page.locator('[contenteditable="true"]')).toBeVisible();
   });
 
   test('Send button is disabled when fields are empty', async ({ page }) => {
@@ -45,7 +45,7 @@ test.describe('Compose (authenticated)', () => {
     await page.goto('/compose');
     await page.locator('input[placeholder*="recipient"]').fill('test@example.com');
     await page.locator('input[placeholder="Subject"]').fill('Test subject');
-    await page.locator('textarea').fill('Test body content');
+    await page.locator('[contenteditable="true"]').fill('Test body content');
     const sendBtn = page.getByRole('button', { name: /send/i });
     await expect(sendBtn).toBeEnabled();
   });
