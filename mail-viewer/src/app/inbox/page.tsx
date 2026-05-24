@@ -12,7 +12,7 @@ import { stripHtml } from '@/lib/ai-utils';
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: { mailbox?: string; page?: string; msg?: string; tag?: string; trash?: string };
+  searchParams: { mailbox?: string; page?: string; msg?: string; tag?: string; trash?: string; view?: string };
 }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect('/api/auth/signin');
@@ -101,6 +101,7 @@ export default async function InboxPage({
           selectedSafeHtml={selectedSafeHtml}
           bodyForAI={bodyForAI}
           username={username}
+          initialViewMode={(searchParams.view === 'unread' || searchParams.view === 'starred') ? searchParams.view : 'all'}
         />
       </main>
     </div>
