@@ -9,6 +9,8 @@ interface ComposeFormProps {
   defaultTo?: string;
   defaultSubject?: string;
   defaultInReplyTo?: string;
+  draftId?: number;
+  popup?: boolean;
 }
 
 type EditorMode = 'plain' | 'rich';
@@ -48,7 +50,7 @@ function RichToolbar({ onFormat }: { onFormat: (cmd: string, val?: string) => vo
   );
 }
 
-export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInReplyTo = '' }: ComposeFormProps) {
+export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInReplyTo = '', draftId: initialDraftId, popup }: ComposeFormProps) {
   const router = useRouter();
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState('');
@@ -62,6 +64,7 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
   const [sending, setSending] = useState(false);
   const [savedDraft, setSavedDraft] = useState(false);
   const [error, setError] = useState('');
+  const [draftId, setDraftId] = useState<number | null>(initialDraftId ?? null);
   const editorRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -88,14 +91,33 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
     }
   }
 
-  function saveDraft() {
-    const { text } = getBodyContent();
-    const draft = { to, cc, bcc, subject, body: text, savedAt: new Date().toISOString() };
+  async function saveDraft() {
+    const { text, html } = getBodyContent();
+    const payload = { to, cc, bcc, subject, text, html: html || null, inReplyTo: defaultInReplyTo || null };
     try {
-      localStorage.setItem('mail_draft', JSON.stringify(draft));
+      if (draftId !== null) {
+        await fetch(`/api/drafts/${draftId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        const resp = await fetch('/api/drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setDraftId(data.id);
+        }
+      }
+      try { localStorage.removeItem('mail_draft'); } catch {}
       setSavedDraft(true);
       setTimeout(() => setSavedDraft(false), 2000);
-    } catch {}
+    } catch {
+      setError('Could not save draft — check your connection and try again.');
+    }
   }
 
   async function send() {
@@ -143,7 +165,14 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
       }
       // Clear draft on success
       try { localStorage.removeItem('mail_draft'); } catch {}
-      router.push('/inbox');
+      if (draftId !== null) {
+        fetch(`/api/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});
+      }
+      if (popup) {
+        window.close();
+      } else {
+        router.push('/inbox');
+      }
     } finally {
       setSending(false);
     }

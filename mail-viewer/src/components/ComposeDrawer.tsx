@@ -31,6 +31,9 @@ export interface ComposeDrawerOptions {
   to?: string;
   subject?: string;
   inReplyTo?: string;
+  draftId?: number;
+  body?: string;
+  html?: string;
 }
 
 // ─── Context (simple singleton via module-level ref) ─────────────────────────
@@ -90,6 +93,7 @@ export function ComposeDrawer() {
   const [savedDraft, setSavedDraft] = useState(false);
   const [error, setError] = useState('');
   const [inReplyTo, setInReplyTo] = useState('');
+  const [draftId, setDraftId] = useState<number | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -102,9 +106,32 @@ export function ComposeDrawer() {
       setInReplyTo(opts.inReplyTo ?? '');
       setCc('');
       setBcc('');
-      setBody('');
-      setRichBodyText('');
-      if (editorRef.current) editorRef.current.innerHTML = '';
+      setDraftId(opts.draftId ?? null);
+      // Restore body from draft if provided
+      const bodyText = opts.body ?? '';
+      const htmlContent = opts.html ?? '';
+      setBody(bodyText);
+      if (editorRef.current) {
+        if (htmlContent) {
+          editorRef.current.innerHTML = htmlContent;
+          setRichBodyText(editorRef.current.innerText || bodyText);
+        } else if (bodyText) {
+          // Render plain text safely as text nodes
+          const div = document.createElement('div');
+          bodyText.split('\n').forEach((line, i, arr) => {
+            div.appendChild(document.createTextNode(line));
+            if (i < arr.length - 1) div.appendChild(document.createElement('br'));
+          });
+          editorRef.current.innerHTML = '';
+          editorRef.current.appendChild(div);
+          setRichBodyText(editorRef.current.innerText || bodyText);
+        } else {
+          editorRef.current.innerHTML = '';
+          setRichBodyText('');
+        }
+      } else {
+        setRichBodyText(bodyText);
+      }
       setError('');
       setAttachments([]);
       setShowCcBcc(false);
@@ -133,6 +160,7 @@ export function ComposeDrawer() {
     if (to) params.set('replyTo', to);
     if (subject) params.set('subject', subject);
     if (inReplyTo) params.set('inReplyTo', inReplyTo);
+    params.set('popup', '1');
     window.open(
       `/compose?${params.toString()}`,
       'compose',
@@ -173,14 +201,33 @@ export function ComposeDrawer() {
     }
   }
 
-  function saveDraft() {
-    const { text } = getBodyContent();
+  async function saveDraft() {
+    const { text, html } = getBodyContent();
+    const payload = { to, cc, bcc, subject, text, html: html || null, inReplyTo: inReplyTo || null };
     try {
-      localStorage.setItem('mail_draft', JSON.stringify({ to, cc, bcc, subject, body: text, savedAt: new Date().toISOString() }));
+      if (draftId !== null) {
+        await fetch(`/api/drafts/${draftId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        const resp = await fetch('/api/drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setDraftId(data.id);
+        }
+      }
+      // Also clear the old localStorage draft if present
+      try { localStorage.removeItem('mail_draft'); } catch {}
       setSavedDraft(true);
       setTimeout(() => setSavedDraft(false), 2000);
     } catch {
-      setError('Could not save draft — storage may be full or blocked.');
+      setError('Could not save draft.');
     }
   }
 
@@ -229,6 +276,11 @@ export function ComposeDrawer() {
       }
 
       try { localStorage.removeItem('mail_draft'); } catch {}
+      // Delete server-side draft if one was saved
+      if (draftId !== null) {
+        fetch(`/api/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});
+        setDraftId(null);
+      }
       setDrawerState('closed');
     } finally {
       setSending(false);
