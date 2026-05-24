@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { PenSquare, ChevronDown, Inbox, Users, Trash2, X, Tag, Menu } from 'lucide-react';
+import { PenSquare, ChevronDown, Inbox, Users, Trash2, X, Tag, Menu, LogOut } from 'lucide-react';
 
 interface MobileHeaderProps {
   username: string;
@@ -148,6 +148,18 @@ export function MobileHeader({ username, fullName, mailbox, tag, trashView }: Mo
                   );
                 })}
               </nav>
+            </div>
+
+            {/* Sign out */}
+            <div className="border-t border-rule pt-1 pb-1">
+              <Link
+                href="/api/auth/signout"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-2.5 text-sm font-sans text-ink-soft hover:text-ink hover:bg-[#f0ede4] transition-colors"
+              >
+                <LogOut size={16} strokeWidth={1.75} className="flex-shrink-0" />
+                <span>Sign out</span>
+              </Link>
             </div>
 
             {/* Tags */}
