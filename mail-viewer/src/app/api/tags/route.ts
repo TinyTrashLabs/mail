@@ -5,12 +5,20 @@ import { viewerHeaders } from '@/lib/mail-store';
 
 const STORE_URL = process.env.MAIL_STORE_URL!;
 
+function authorizeMailbox(username: string, mailbox: string): boolean {
+  return mailbox === 'shared' || mailbox === username;
+}
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const username = (session as { username?: string }).username ?? '';
 
   const mailbox = req.nextUrl.searchParams.get('mailbox') || 'shared';
+  if (!authorizeMailbox(username, mailbox)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const resp = await fetch(`${STORE_URL}/tags?mailbox=${encodeURIComponent(mailbox)}`, {
     headers: viewerHeaders(username),
     cache: 'no-store',
@@ -26,6 +34,10 @@ export async function PATCH(req: NextRequest) {
   const username = (session as { username?: string }).username ?? '';
 
   const mailbox = req.nextUrl.searchParams.get('mailbox') || 'shared';
+  if (!authorizeMailbox(username, mailbox)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const body = await req.json().catch(() => null);
   if (!body || typeof body.from !== 'string' || typeof body.to !== 'string') {
     return NextResponse.json({ error: 'from/to required' }, { status: 400 });
@@ -47,6 +59,10 @@ export async function DELETE(req: NextRequest) {
   const username = (session as { username?: string }).username ?? '';
 
   const mailbox = req.nextUrl.searchParams.get('mailbox') || 'shared';
+  if (!authorizeMailbox(username, mailbox)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const tag = req.nextUrl.searchParams.get('tag') || '';
   if (!tag) return NextResponse.json({ error: 'tag required' }, { status: 400 });
 
