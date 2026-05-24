@@ -148,4 +148,58 @@ router.get('/messages/:id', async (req, res) => {
   }
 });
 
+/**
+ * GET /messages/:id/attachments/:idx
+ * Streams the binary content of a single attachment.
+ * Auth: same VIEWER_SECRET + X-Viewer-User token as message fetch.
+ */
+router.get('/messages/:id/attachments/:idx', async (req, res) => {
+  if (!checkAuth(req, res)) return;
+  const viewerUser = resolveViewerUser(req, res);
+  if (viewerUser === null) return;
+
+  const id = parseMessageId(req.params.id);
+  if (id === null) return res.status(400).json({ error: 'invalid id' });
+
+  const idx = parseInt(req.params.idx, 10);
+  if (!Number.isFinite(idx) || idx < 0) return res.status(400).json({ error: 'invalid idx' });
+
+  try {
+    // Verify the viewer can read this message (reuses existing access control).
+    const { rows: msgRows } = await pool.query(
+      'SELECT mailbox, attachments_meta FROM messages WHERE id = $1',
+      [id]
+    );
+    if (!msgRows.length) return res.status(404).json({ error: 'not found' });
+    const msg = msgRows[0];
+    if (!canReadMessage(msg.mailbox, viewerUser)) return res.status(404).json({ error: 'not found' });
+
+    const meta = msg.attachments_meta?.[idx];
+    if (!meta) return res.status(404).json({ error: 'attachment not found' });
+
+    const { rows: dataRows } = await pool.query(
+      'SELECT data FROM attachment_data WHERE message_id = $1 AND idx = $2',
+      [id, idx]
+    );
+    if (!dataRows.length) return res.status(404).json({ error: 'attachment data not stored' });
+
+    const contentType = meta.contentType || 'application/octet-stream';
+    const filename = meta.filename || `attachment-${idx}`;
+    // For previewable types serve inline; others force download.
+    const PREVIEWABLE = /^(image\/(jpeg|png|gif|webp|svg\+xml)|application\/pdf|text\/.+)$/i;
+    const disposition = PREVIEWABLE.test(contentType)
+      ? `inline; filename="${filename.replace(/"/g, '')}"`
+      : `attachment; filename="${filename.replace(/"/g, '')}"`;
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', disposition);
+    res.setHeader('Content-Length', dataRows[0].data.length);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.end(dataRows[0].data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'db error' });
+  }
+});
+
 export default router;
