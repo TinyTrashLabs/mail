@@ -4,10 +4,11 @@ compatibility_date = "2024-09-23"
 
 [vars]
 MAIL_STORE_URL = "https://mail-ingest.tinytrashlabs.com"
-# When the routing rule points personal addresses (david@/shane@/etc) at
-# this worker, FORWARD_TO is the gmail backup recipient. Must be verified
-# as a destination address in Cloudflare Email Routing for this account.
-FORWARD_TO = "tinytrashlabs@gmail.com"
+# Per-recipient forwarding map. Destination addresses must be verified in
+# Cloudflare Email Routing for this account. JSON-encoded so vars stay
+# scalar. Recipients not in the map fall through to FORWARD_TO (if set)
+# or skip forwarding entirely.
+FORWARD_MAP = '{"david@tinytrashlabs.com":"freeman412@gmail.com"}'
 
 # INGEST_SECRET must be set as a Wrangler secret:
 # wrangler secret put INGEST_SECRET
