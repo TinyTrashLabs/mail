@@ -36,7 +36,7 @@ router.get('/drafts', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, username, to_addrs, cc_addrs, bcc_addrs, subject, updated_at
-       FROM drafts WHERE username = $1 ORDER BY updated_at DESC`,
+       FROM drafts WHERE username = $1 ORDER BY updated_at DESC LIMIT 200`,
       [username]
     );
     res.json({ drafts: rows });

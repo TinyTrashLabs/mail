@@ -21,6 +21,7 @@ function formatDate(iso: string) {
 export function DraftsClient({ drafts: initial }: DraftsClientProps) {
   const [drafts, setDrafts] = useState<Draft[]>(initial);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [opening, setOpening] = useState<number | null>(null);
 
   async function deleteDraft(id: number, e: React.MouseEvent) {
     e.stopPropagation();
@@ -35,13 +36,23 @@ export function DraftsClient({ drafts: initial }: DraftsClientProps) {
     }
   }
 
-  function openDraft(draft: Draft) {
-    // Open in compose drawer with draft content
-    openComposeDrawer({
-      to: draft.to_addrs,
-      subject: draft.subject,
-      inReplyTo: draft.in_reply_to || undefined,
-    });
+  async function openDraft(draft: Draft) {
+    setOpening(draft.id);
+    try {
+      // Fetch full draft (with text_body/html_body) from server
+      const resp = await fetch(`/api/drafts/${draft.id}`);
+      const full: Draft = resp.ok ? await resp.json() : draft;
+      openComposeDrawer({
+        to: full.to_addrs,
+        subject: full.subject,
+        inReplyTo: full.in_reply_to || undefined,
+        draftId: full.id,
+        body: full.text_body || '',
+        html: full.html_body || undefined,
+      });
+    } finally {
+      setOpening(null);
+    }
   }
 
   if (drafts.length === 0) {
@@ -67,7 +78,8 @@ export function DraftsClient({ drafts: initial }: DraftsClientProps) {
           <button
             key={draft.id}
             onClick={() => openDraft(draft)}
-            className="w-full flex items-start gap-3 px-6 py-3 hover:bg-[#f0ede4] transition-colors text-left group"
+            disabled={opening === draft.id}
+            className="w-full flex items-start gap-3 px-6 py-3 hover:bg-[#f0ede4] transition-colors text-left group disabled:opacity-60"
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
@@ -81,7 +93,7 @@ export function DraftsClient({ drafts: initial }: DraftsClientProps) {
                 )}
               </div>
               <span className="text-xs font-sans text-ink-soft/60">
-                Saved {formatDate(draft.updated_at)}
+                {opening === draft.id ? 'Opening…' : `Saved ${formatDate(draft.updated_at)}`}
               </span>
             </div>
             <button

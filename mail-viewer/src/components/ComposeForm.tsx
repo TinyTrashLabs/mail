@@ -116,7 +116,7 @@ export function ComposeForm({ defaultTo = '', defaultSubject = '', defaultInRepl
       setSavedDraft(true);
       setTimeout(() => setSavedDraft(false), 2000);
     } catch {
-      // silent fail — draft save is best-effort
+      setError('Could not save draft — check your connection and try again.');
     }
   }
 

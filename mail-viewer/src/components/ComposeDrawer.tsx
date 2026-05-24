@@ -31,6 +31,9 @@ export interface ComposeDrawerOptions {
   to?: string;
   subject?: string;
   inReplyTo?: string;
+  draftId?: number;
+  body?: string;
+  html?: string;
 }
 
 // ─── Context (simple singleton via module-level ref) ─────────────────────────
@@ -103,13 +106,35 @@ export function ComposeDrawer() {
       setInReplyTo(opts.inReplyTo ?? '');
       setCc('');
       setBcc('');
-      setBody('');
-      setRichBodyText('');
-      if (editorRef.current) editorRef.current.innerHTML = '';
+      setDraftId(opts.draftId ?? null);
+      // Restore body from draft if provided
+      const bodyText = opts.body ?? '';
+      const htmlContent = opts.html ?? '';
+      setBody(bodyText);
+      if (editorRef.current) {
+        if (htmlContent) {
+          editorRef.current.innerHTML = htmlContent;
+          setRichBodyText(editorRef.current.innerText || bodyText);
+        } else if (bodyText) {
+          // Render plain text safely as text nodes
+          const div = document.createElement('div');
+          bodyText.split('\n').forEach((line, i, arr) => {
+            div.appendChild(document.createTextNode(line));
+            if (i < arr.length - 1) div.appendChild(document.createElement('br'));
+          });
+          editorRef.current.innerHTML = '';
+          editorRef.current.appendChild(div);
+          setRichBodyText(editorRef.current.innerText || bodyText);
+        } else {
+          editorRef.current.innerHTML = '';
+          setRichBodyText('');
+        }
+      } else {
+        setRichBodyText(bodyText);
+      }
       setError('');
       setAttachments([]);
       setShowCcBcc(false);
-      setDraftId(null);
       setDrawerState('expanded');
     };
     window.addEventListener(OPEN_EVENT, handler);
