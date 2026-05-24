@@ -128,15 +128,18 @@ router.post('/ingest', async (req, res) => {
     }
 
     // Store attachment binary content (best-effort — never blocks response).
+    // Sequential inserts avoid pooling spikes on multi-attachment messages.
     if (!duplicate && id !== null && f.attachmentData?.length) {
-      for (let i = 0; i < f.attachmentData.length; i++) {
-        const buf = f.attachmentData[i];
-        if (!buf) continue;
-        pool.query(
-          'INSERT INTO attachment_data (message_id, idx, data) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-          [id, i, buf]
-        ).catch(err => console.warn('[ingest] attachment_data insert failed:', err.message));
-      }
+      (async () => {
+        for (let i = 0; i < f.attachmentData.length; i++) {
+          const buf = f.attachmentData[i];
+          if (!buf) continue;
+          await pool.query(
+            'INSERT INTO attachment_data (message_id, idx, data) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+            [id, i, buf]
+          ).catch(err => console.warn('[ingest] attachment_data insert failed:', err.message));
+        }
+      })();
     }
 
     // Notify mailbox owner — fire-and-forget, never blocks response

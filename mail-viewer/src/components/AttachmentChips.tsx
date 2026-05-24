@@ -42,8 +42,13 @@ export function AttachmentChips({ messageId, attachments }: Props) {
       setLoading(true);
       try {
         const r = await fetch(url);
-        const text = await r.text();
-        setTextContent(text);
+        if (!r.ok) {
+          setTextContent(`(failed to load — HTTP ${r.status})`);
+        } else {
+          setTextContent(await r.text());
+        }
+      } catch {
+        setTextContent('(failed to load)');
       } finally {
         setLoading(false);
       }

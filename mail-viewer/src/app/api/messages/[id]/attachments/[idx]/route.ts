@@ -33,8 +33,14 @@ export async function GET(
   );
 
   if (!upstream.ok) {
-    const status = upstream.status === 404 ? 404 : 500;
-    return NextResponse.json({ error: 'not found' }, { status });
+    // Preserve meaningful upstream status codes so callers can distinguish
+    // "attachment not stored yet" (404) from auth failures (401/403) and
+    // payload-too-large (413).
+    const status = [400, 401, 403, 404, 413].includes(upstream.status)
+      ? upstream.status
+      : 500;
+    const body = await upstream.json().catch(() => ({ error: 'upstream error' }));
+    return NextResponse.json(body, { status });
   }
 
   // Proxy the binary response with the correct headers.

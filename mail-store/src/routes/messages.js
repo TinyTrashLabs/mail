@@ -177,6 +177,14 @@ router.get('/messages/:id/attachments/:idx', async (req, res) => {
     const meta = msg.attachments_meta?.[idx];
     if (!meta) return res.status(404).json({ error: 'attachment not found' });
 
+    // Guard: reject attachments whose stored size would blow the Node heap.
+    // 20 MB is a safe ceiling for in-memory BYTEA; larger files should use
+    // object storage (not yet wired).
+    const MAX_BYTES = 20 * 1024 * 1024;
+    if (meta.size > MAX_BYTES) {
+      return res.status(413).json({ error: 'attachment too large for inline delivery' });
+    }
+
     const { rows: dataRows } = await pool.query(
       'SELECT data FROM attachment_data WHERE message_id = $1 AND idx = $2',
       [id, idx]
@@ -184,12 +192,15 @@ router.get('/messages/:id/attachments/:idx', async (req, res) => {
     if (!dataRows.length) return res.status(404).json({ error: 'attachment data not stored' });
 
     const contentType = meta.contentType || 'application/octet-stream';
-    const filename = meta.filename || `attachment-${idx}`;
+    const rawFilename = meta.filename || `attachment-${idx}`;
+    // Strip control characters (incl. CR/LF) to prevent header injection.
+    // eslint-disable-next-line no-control-regex
+    const filename = rawFilename.replace(/[\x00-\x1f\x7f"]/g, '');
     // For previewable types serve inline; others force download.
     const PREVIEWABLE = /^(image\/(jpeg|png|gif|webp|svg\+xml)|application\/pdf|text\/.+)$/i;
     const disposition = PREVIEWABLE.test(contentType)
-      ? `inline; filename="${filename.replace(/"/g, '')}"`
-      : `attachment; filename="${filename.replace(/"/g, '')}"`;
+      ? `inline; filename="${filename}"`
+      : `attachment; filename="${filename}"`;
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', disposition);
