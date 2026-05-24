@@ -275,39 +275,43 @@ export function ComposeDrawer() {
       className="fixed bottom-0 right-6 z-50 flex flex-col bg-cream border border-rule rounded-t-card shadow-2xl"
       style={{ width: 'min(460px, calc(100vw - 48px))', height: 'min(580px, calc(100vh - 80px))' }}
     >
-      {/* ── Header bar ── */}
-      <div
-        className="flex items-center gap-2 px-4 py-2.5 bg-ink text-cream rounded-t-card cursor-pointer select-none flex-shrink-0"
-        onClick={minimize}
-      >
-        <Send size={13} strokeWidth={1.75} className="text-teal flex-shrink-0" />
-        <span className="flex-1 text-sm font-sans font-medium truncate">{subject || 'New message'}</span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            title="Minimize"
-            onClick={minimize}
-            className="p-1 rounded hover:bg-white/10 text-cream/60 hover:text-cream transition-colors"
-          >
-            <Minus size={13} strokeWidth={2} />
-          </button>
-          <button
-            type="button"
-            title="Pop out"
-            onClick={popout}
-            className="p-1 rounded hover:bg-white/10 text-cream/60 hover:text-cream transition-colors"
-          >
-            <ExternalLink size={13} strokeWidth={1.75} />
-          </button>
-          <button
-            type="button"
-            title="Close"
-            onClick={close}
-            className="p-1 rounded hover:bg-white/10 text-cream/60 hover:text-cream transition-colors"
-          >
-            <X size={13} strokeWidth={2} />
-          </button>
-        </div>
+      {/* ── Header bar — sibling elements, no nested interactive controls ── */}
+      <div className="flex items-stretch bg-ink text-cream rounded-t-card flex-shrink-0">
+        {/* Clickable title area → minimize */}
+        <button
+          type="button"
+          onClick={minimize}
+          className="flex items-center gap-2 pl-4 pr-2 py-2.5 flex-1 text-left hover:bg-white/5 transition-colors cursor-pointer select-none"
+          title="Minimize"
+        >
+          <Send size={13} strokeWidth={1.75} className="text-teal flex-shrink-0" />
+          <span className="flex-1 text-sm font-sans font-medium truncate">{subject || 'New message'}</span>
+        </button>
+        {/* Action buttons — siblings, not children of the title button */}
+        <button
+          type="button"
+          title="Minimize"
+          onClick={minimize}
+          className="px-2 py-2.5 hover:bg-white/10 text-cream/60 hover:text-cream transition-colors"
+        >
+          <Minus size={13} strokeWidth={2} />
+        </button>
+        <button
+          type="button"
+          title="Pop out"
+          onClick={popout}
+          className="px-2 py-2.5 hover:bg-white/10 text-cream/60 hover:text-cream transition-colors"
+        >
+          <ExternalLink size={13} strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
+          title="Close"
+          onClick={close}
+          className="px-2 py-2.5 hover:bg-white/10 text-cream/60 hover:text-cream transition-colors rounded-tr-card"
+        >
+          <X size={13} strokeWidth={2} />
+        </button>
       </div>
 
       {/* ── Fields area ── */}
