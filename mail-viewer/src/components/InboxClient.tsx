@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AISummary } from '@/components/AISummary';
 import { MessageActions } from '@/components/MessageActions';
+import { MessageTagBar } from '@/components/MessageTagBar';
 import { formatFromAddr, formatDisplayName } from '@/lib/display-name';
 import { openComposeDrawer } from '@/components/ComposeDrawer';
 
@@ -468,15 +469,14 @@ export function InboxClient({
             <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
               <h1 className="text-base sm:text-lg font-serif font-semibold text-ink mb-3 sm:mb-4 leading-snug">{selectedMsg.subject}</h1>
 
-              {/* Tags on mobile - show below subject */}
-              {(selectedMsg.tags?.length ?? 0) > 0 && (
-                <div className="sm:hidden flex flex-wrap items-center gap-1 mb-3">
-                  <Tag size={11} strokeWidth={1.75} className="text-ink-soft" />
-                  {selectedMsg.tags!.map(t => (
-                    <span key={t} className={`text-[10px] px-1.5 py-0.5 rounded font-sans ${tagColor(t)}`}>{t}</span>
-                  ))}
-                </div>
-              )}
+              {/* Tag bar — interactive add/remove/AI tag. Replaces the old read-only badge row. */}
+              <MessageTagBar
+                messageId={selectedMsg.id}
+                subject={selectedMsg.subject}
+                from={selectedMsg.from_addr}
+                body={bodyForAI}
+                initialTags={selectedMsg.tags ?? []}
+              />
 
               {bodyForAI && (
                 <AISummary messageId={selectedMsg.id} subject={selectedMsg.subject} from={selectedMsg.from_addr} body={bodyForAI} />
